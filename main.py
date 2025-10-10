@@ -1,0 +1,48 @@
+#!/usr/bin/env python3
+"""
+PREN Puzzle Solver - Main Entry Point
+Orchestriert die gesamte Pipeline
+"""
+
+import sys
+from pathlib import Path
+
+# Projekt-Root zum Path hinzufügen
+project_root = Path(__file__).parent
+sys.path.insert(0, str(project_root))
+
+from src.core.pipeline import PuzzlePipeline
+from src.core.config import Config
+from src.utils.logger import setup_logger
+
+def main():
+    # Logger initialisieren
+    logger = setup_logger("main")
+    logger.info("=" * 60)
+    logger.info("PREN Puzzle Solver gestartet")
+    logger.info("=" * 60)
+    
+    try:
+        # Konfiguration laden
+        config = Config()
+        
+        # Pipeline erstellen
+        pipeline = PuzzlePipeline(config)
+        
+        # Pipeline ausführen
+        result = pipeline.run()
+        
+        if result.success:
+            logger.info("✓ Puzzle erfolgreich gelöst!")
+            logger.info(f"Zeit: {result.duration:.2f}s")
+        else:
+            logger.error("✗ Puzzle konnte nicht gelöst werden")
+            
+    except KeyboardInterrupt:
+        logger.info("\nProgramm durch Benutzer abgebrochen")
+    except Exception as e:
+        logger.exception(f"Fehler: {e}")
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()
