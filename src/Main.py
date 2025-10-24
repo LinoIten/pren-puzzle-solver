@@ -18,7 +18,6 @@ Python: 3.10+
 from __future__ import annotations
 import math
 import random
-import time
 
 # -----------------------------
 # Konfiguration (einfach halten)
@@ -30,40 +29,8 @@ SEED         = 42                        # für reproduzierbare Zufallswerte
 # ----------------------------------
 # Datentypen (ganz simpel gehalten)
 # ----------------------------------
-class Pose:
-    def __init__(self, x_mm: float, y_mm: float, theta_deg: float):
-        self.x = float(x_mm)
-        self.y = float(y_mm)
-        self.theta = float(theta_deg)  # [-180, 180]
-
-    def __repr__(self) -> str:
-        return f"Pose(x={self.x:.1f} mm, y={self.y:.1f} mm, theta={self.theta:.1f}°)"
 
 
-class Piece:
-    def __init__(self, pid: str, pick: Pose):
-        self.id = pid
-        self.pick_pose = pick
-        self.place_pose: Pose | None = None
-        self.confidence = 0.0
-
-    def __repr__(self) -> str:
-        return (f"Piece(id={self.id}, pick={self.pick_pose}, "
-                f"place={self.place_pose}, conf={self.confidence:.2f})")
-
-
-# --------------------------------------------------
-# 1) "Kamerabild" holen (hier nur ein Zeitstempel)
-# --------------------------------------------------
-def capture_frame() -> dict:
-    """
-    Platzhalter statt echter Kamera.
-    Liefert Metadaten, die man loggen kann.
-    """
-    return {
-        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
-        "workspace_mm": WORKSPACE_MM,
-    }
 
 
 # --------------------------------------------------
@@ -92,41 +59,6 @@ def detect_pieces(frame_meta: dict, n: int = NUM_PIECES) -> list[Piece]:
     # - Schwerpunkt (Momente), Winkel (minAreaRect/PCA)
     return pieces
 
-
-# --------------------------------------------------
-# 3) "Planung": wohin soll das Teil? (noch trivial)
-# --------------------------------------------------
-def plan_placements(pieces: list[Piece]) -> list[Piece]:
-    """
-    Platzhalter-Solver:
-    - v0: pick == place (wir „tun“ noch nichts)
-    - v1 (einfacher Schritt): leg Teile z.B. sauber in eine Reihe am unteren Rand
-    """
-    # v0: identisch
-    for p in pieces:
-        p.place_pose = Pose(p.pick_pose.x, p.pick_pose.y, p.pick_pose.theta)
-        p.confidence = 0.5  # Dummy-Wert
-    return pieces
-
-
-# --------------------------------------------------
-# 4) "Roboter-Schnittstelle": Koordinaten ausgeben
-# --------------------------------------------------
-def send_to_robot(pieces: list[Piece]) -> None:
-    """
-    Minimal-„Schnittstelle“:
-    - Wir drucken pro Teil eine Zeile mit x, y, theta.
-    - Genau das, was später per seriell/TCP/etc. gesendet werden könnte.
-    Format (CSV-ähnlich, sehr lesbar):
-      ID; PICK_X_mm; PICK_Y_mm; PICK_THETA_deg; PLACE_X_mm; PLACE_Y_mm; PLACE_THETA_deg
-    """
-    header = "ID;PICK_X_mm;PICK_Y_mm;PICK_THETA_deg;PLACE_X_mm;PLACE_Y_mm;PLACE_THETA_deg"
-    print(header)
-    for p in pieces:
-        px, py, pt = p.pick_pose.x, p.pick_pose.y, p.pick_pose.theta
-        qx, qy, qt = p.place_pose.x, p.place_pose.y, p.place_pose.theta if p.place_pose else (math.nan, math.nan, math.nan)
-        line = f"{p.id};{px:.1f};{py:.1f};{pt:.1f};{qx:.1f};{qy:.1f};{qt:.1f}"
-        print(line)
 
 
 # --------------------------------------------------
