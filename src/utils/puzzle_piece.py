@@ -1,4 +1,4 @@
-import Pose
+from src.utils.pose import Pose
 
 class PuzzlePiece:
     def __init__(self, pid: str, pick: Pose):
