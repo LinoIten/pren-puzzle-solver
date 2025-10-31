@@ -13,6 +13,7 @@ class VisionConfig:
     image_height: int = 1080
     threshold_value: int = 127
     min_contour_area: int = 1000
+    regenerate_mock: bool = True
 
 @dataclass
 class SolverConfig:

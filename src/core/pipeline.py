@@ -6,6 +6,8 @@ Haupt-Pipeline orchestriert alle Schritte
 from dataclasses import dataclass
 from time import time
 from typing import Optional
+
+import cv2
 from .config import Config
 from ..utils.logger import setup_logger
 from ..solver.guess_generator import GuessGenerator 
@@ -41,14 +43,15 @@ class PuzzlePipeline:
         self.logger = setup_logger("pipeline")
         self.show_ui = show_ui
         
-        # Initialize solver components
+        # Initialize solver components - match smaller piece size
         self.guess_generator = GuessGenerator(rotation_step=90)
-        self.renderer = GuessRenderer(width=800, height=800)
+        self.renderer = GuessRenderer(width=800, height=800)  # Back to reasonable size
         self.scorer = PlacementScorer(
             overlap_penalty=2.0,
             coverage_reward=1.0,
             gap_penalty=0.5
         )
+
         
     def run(self) -> PipelineResult:
         """Fuehrt die komplette Pipeline aus"""
@@ -68,11 +71,16 @@ class PuzzlePipeline:
             self.logger.info("Phase 3: Validierung")
             is_valid = self._validate_solution(solution)
             
+            # Launch UI even if validation failed (for debugging)
+            if self.show_ui and solution:
+                self._launch_ui(solution)
+            
             if not is_valid:
                 return PipelineResult(
                     success=False,
                     duration=time() - start_time,
-                    message="Loesung konnte nicht validiert werden"
+                    message="Loesung konnte nicht validiert werden",
+                    solution=solution  # Still return solution for debugging
                 )
             
             # Phase 4: Hardware (nur PREN2)
@@ -82,10 +90,6 @@ class PuzzlePipeline:
             
             duration = time() - start_time
             self.logger.info(f"✓ Pipeline erfolgreich abgeschlossen ({duration:.2f}s)")
-            
-            # Launch UI if requested
-            if self.show_ui and solution:
-                self._launch_ui(solution)
             
             return PipelineResult(
                 success=True,
@@ -101,45 +105,42 @@ class PuzzlePipeline:
                 duration=time() - start_time,
                 message=f"Fehler: {str(e)}"
             )
-
     def _process_vision(self):
         """Bildverarbeitung"""
         self.logger.info("  → Bildaufnahme...")
+        
+        from ..vision.mock_puzzle_creator import MockPuzzleGenerator
+        
+        generator = MockPuzzleGenerator(output_dir="data/mock_pieces")
+        
+        # Check if we already have saved pieces
+        existing_pieces = list(generator.output_dir.glob("piece_*.png"))
+        
+        if not existing_pieces or self.config.vision.regenerate_mock:
+            self.logger.info("  → Generiere Mock-Puzzle...")
+            
+            # Generate new puzzle
+            full_image, piece_images, debug_image = generator.generate_puzzle()
+            
+            # Save pieces
+            piece_paths = generator.save_pieces(piece_images)
+            
+            # Save debug image
+            cv2.imwrite("data/mock_pieces/debug_cuts.png", debug_image)
+            self.logger.info("  → Mock-Puzzle gespeichert in data/mock_pieces/")
+        else:
+            self.logger.info(f"  → Lade {len(existing_pieces)} existierende Mock-Teile...")
+        
         self.logger.info("  → Segmentierung...")
         self.logger.info("  → Feature-Extraktion...")
         
-        # Create test pieces that will FIT the target
-        num_pieces = 4
-        piece_shapes = {}
+        # Load pieces for solver
+        piece_ids, piece_shapes = generator.load_pieces_for_solver()
         
-        # Make pieces that are 100x100 to fit a 2x2 grid of 200x200
-        size = 100
+        self.logger.info(f"  → {len(piece_ids)} Teile geladen")
         
-        # Piece 0: Square
-        shape0 = np.zeros((size, size), dtype=np.uint8)
-        shape0[5:size-5, 5:size-5] = 1
-        piece_shapes[0] = shape0
-        
-        # Piece 1: Square with cutout
-        shape1 = np.zeros((size, size), dtype=np.uint8)
-        shape1[5:size-5, 5:size-5] = 1
-        shape1[30:70, 30:70] = 0  # cutout
-        piece_shapes[1] = shape1
-        
-        # Piece 2: Rectangle
-        shape2 = np.zeros((size, size), dtype=np.uint8)
-        shape2[5:size-5, 20:80] = 1
-        piece_shapes[2] = shape2
-        
-        # Piece 3: L-shape
-        shape3 = np.zeros((size, size), dtype=np.uint8)
-        shape3[5:size-5, 5:40] = 1  # vertical
-        shape3[60:size-5, 5:size-5] = 1  # horizontal
-        piece_shapes[3] = shape3
-        
-        pieces = list(range(num_pieces))
-        
-        return pieces, piece_shapes
+        return piece_ids, piece_shapes
+
 
     def _solve_puzzle(self, pieces, piece_shapes):
         """Puzzle loesen mit Brute-Force"""
@@ -148,25 +149,21 @@ class PuzzlePipeline:
         # Create target
         target = self._create_target_layout(len(pieces))
         
-        # Define candidate positions that MATCH the target area
-        # Target is 200x200 at position 300,300 (center 400,400)
-        # So place pieces in a 2x2 grid around that center
-        positions = [
-            (350.0, 350.0),  # top-left
-            (450.0, 350.0),  # top-right
-            (350.0, 450.0),  # bottom-left
-            (450.0, 450.0),  # bottom-right
-        ]
-        
         self.logger.info("  → Teile zuordnen...")
         
-        # Generate all guesses
-        guesses = self.guess_generator.generate_guesses(len(pieces), positions)
+        # Generate guesses with grid-based positioning
+        guesses = self.guess_generator.generate_guesses(
+            num_pieces=len(pieces),
+            target=target,
+            max_guesses=10000
+        )
+        
         self.logger.info(f"  → Teste {len(guesses)} moegliche Loesungen...")
         
         # Find best solution
         best_score = -float('inf')
         best_guess = None
+        best_guess_index = 0  # Track the index
         best_rendered = None
         
         for i, guess in enumerate(guesses):
@@ -176,10 +173,12 @@ class PuzzlePipeline:
             if score > best_score:
                 best_score = score
                 best_guess = guess
+                best_guess_index = i  # Save the index
                 best_rendered = rendered
+                self.logger.info(f"  → Neuer Bestwert: {best_score:.2f} bei Guess #{i}")
             
             # Progress logging
-            if i % 100 == 0 and i > 0:
+            if i % 500 == 0 and i > 0:
                 self.logger.info(f"  → Fortschritt: {i}/{len(guesses)}, bester Score: {best_score:.2f}")
         
         self.logger.info(f"  ✓ Beste Loesung gefunden mit Score: {best_score:.2f}")
@@ -191,20 +190,22 @@ class PuzzlePipeline:
             'target': target,
             'guesses': guesses,
             'piece_shapes': piece_shapes,
-            'best_score': best_score
+            'best_score': best_score,
+            'best_guess': best_guess,  # Save the actual best guess
+            'best_guess_index': best_guess_index  # Save the index
         }
-
+    
     def _create_target_layout(self, num_pieces):
         """Erstelle Ziel-Layout basierend auf Anzahl Teile"""
         target = np.zeros((800, 800), dtype=np.uint8)
         
         if num_pieces == 4:
-            # 2x2 grid of 100x100 squares = 200x200 total
-            # Centered around (400, 400)
-            target[300:400, 300:400] = 1  # top-left
-            target[300:400, 400:500] = 1  # top-right
-            target[400:500, 300:400] = 1  # bottom-left
-            target[400:500, 400:500] = 1  # bottom-right
+            # Target should match ~420x594 A4 size, centered in 800x800
+            # Center the A4 area
+            x_offset = (800 - 420) // 2  # ~190
+            y_offset = (800 - 594) // 2  # ~103
+            
+            target[y_offset:y_offset+594, x_offset:x_offset+420] = 1
         
         return target
 
@@ -255,10 +256,11 @@ class PuzzlePipeline:
             'guesses': solution['guesses'],
             'piece_shapes': solution['piece_shapes'],
             'target': solution['target'],
-            'best_score': solution['best_score']
+            'best_score': solution['best_score'],
+            'best_guess': solution.get('best_guess'),  # Add this
+            'best_guess_index': solution.get('best_guess_index', 0)  # Add this
         }
         
         app = SolverVisualizerApp(solver_data)
         app.run()
-        
         
