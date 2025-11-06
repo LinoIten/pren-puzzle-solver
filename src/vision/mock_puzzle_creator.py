@@ -15,7 +15,6 @@ class MockPuzzleGenerator:
         
         self.a4_width = 420  # Half scale
         self.a4_height = 594
-    # Update src/vision/mock_puzzle_creator.py
 
     def generate_puzzle(self) -> tuple:
         """
@@ -243,30 +242,53 @@ class MockPuzzleGenerator:
         return masks
     
     def save_pieces(self, piece_images: list) -> list:
-        """Save piece images to disk and return file paths."""
+        """Save piece images to disk with random rotations and return file paths."""
         saved_paths = []
         
         for piece_data in piece_images:
             piece_id = piece_data['id']
             image = piece_data['image']
-            
-            # Save as PNG with transparency
-            # Create RGBA image
-            bgra = cv2.cvtColor(image, cv2.COLOR_BGR2BGRA)
-            
-            # Set alpha channel from mask
             mask = piece_data['mask']
-            bgra[:, :, 3] = mask
+            
+            # RANDOMLY ROTATE THE PIECE
+            random_angle = random.randint(0, 359)
+            print(f"Rotating piece {piece_id} by {random_angle} degrees")
+            
+            # Rotate both image and mask
+            h, w = image.shape[:2]
+            center = (w // 2, h // 2)
+            M = cv2.getRotationMatrix2D(center, random_angle, 1.0)
+            
+            # Calculate new bounding box after rotation
+            cos = np.abs(M[0, 0])
+            sin = np.abs(M[0, 1])
+            new_w = int((h * sin) + (w * cos))
+            new_h = int((h * cos) + (w * sin))
+            
+            # Adjust translation
+            M[0, 2] += (new_w / 2) - center[0]
+            M[1, 2] += (new_h / 2) - center[1]
+            
+            # Rotate image and mask
+            rotated_image = cv2.warpAffine(image, M, (new_w, new_h), 
+                                        borderValue=(255, 255, 255))
+            rotated_mask = cv2.warpAffine(mask, M, (new_w, new_h))
+            
+            # Create RGBA image
+            bgra = cv2.cvtColor(rotated_image, cv2.COLOR_BGR2BGRA)
+            
+            # Set alpha channel from rotated mask
+            bgra[:, :, 3] = rotated_mask
             
             # Save
             filepath = self.output_dir / f"piece_{piece_id}.png"
             cv2.imwrite(str(filepath), bgra)
             saved_paths.append(filepath)
             
-            print(f"Saved piece {piece_id} to {filepath}")
+            print(f"Saved piece {piece_id} to {filepath} (rotated {random_angle}°)")
         
         return saved_paths
-    
+
     def load_pieces_for_solver(self, piece_paths: list = None) -> tuple: # type: ignore
         """
         Load saved pieces and prepare them for the solver.

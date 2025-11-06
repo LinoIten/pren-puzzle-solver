@@ -8,6 +8,8 @@ from time import time
 from typing import Optional
 
 import cv2
+
+from src.solver.piece_analyzer import PieceAnalyzer
 from .config import Config
 from ..utils.logger import setup_logger
 from ..solver.guess_generator import GuessGenerator 
@@ -61,11 +63,11 @@ class PuzzlePipeline:
         try:
             # Phase 1: Vision
             self.logger.info("Phase 1: Bildverarbeitung")
-            pieces, piece_shapes = self._process_vision()
+            pieces, piece_shapes, corner_info = self._process_vision()
             
             # Phase 2: Solving
             self.logger.info("Phase 2: Puzzle loesen")
-            solution = self._solve_puzzle(pieces, piece_shapes)
+            solution = self._solve_puzzle(pieces, piece_shapes, corner_info)
             
             # Phase 3: Validation
             self.logger.info("Phase 3: Validierung")
@@ -105,6 +107,7 @@ class PuzzlePipeline:
                 duration=time() - start_time,
                 message=f"Fehler: {str(e)}"
             )
+    
     def _process_vision(self):
         """Bildverarbeitung"""
         self.logger.info("  → Bildaufnahme...")
@@ -137,75 +140,90 @@ class PuzzlePipeline:
         # Load pieces for solver
         piece_ids, piece_shapes = generator.load_pieces_for_solver()
         
-        self.logger.info(f"  → {len(piece_ids)} Teile geladen")
+        # ANALYZE ALL PIECES FOR CORNERS
+        piece_corner_info = PieceAnalyzer.analyze_all_pieces(piece_shapes)
         
-        return piece_ids, piece_shapes
+        # Save visualizations
+        for piece_id, info in piece_corner_info.items():
+            if piece_id in piece_shapes:
+                vis = PieceAnalyzer.visualize_corners(
+                    (piece_shapes[piece_id] * 255).astype(np.uint8),
+                    info
+                )
+                cv2.imwrite(f"data/mock_pieces/piece_{piece_id}_corners.png", vis)
+        
+        self.logger.info(f"  → {len(piece_ids)} Teile geladen und analysiert")
+        
+        return piece_ids, piece_shapes, piece_corner_info  # Return corner info too!
 
-
-    def _solve_puzzle(self, pieces, piece_shapes):
-        """Puzzle loesen mit Brute-Force"""
+    def _solve_puzzle(self, pieces, piece_shapes, piece_corner_info):
+        """Puzzle loesen mit iterativem Ansatz"""
         self.logger.info("  → Layout berechnen...")
         
         # Create target
         target = self._create_target_layout(len(pieces))
         
-        self.logger.info("  → Teile zuordnen...")
+        self.logger.info("  → Iteratives Loesen starten...")
         
-        # Generate guesses with grid-based positioning
-        guesses = self.guess_generator.generate_guesses(
-            num_pieces=len(pieces),
-            target=target,
-            max_guesses=10000
+        from ..solver.iterative_solver import IterativeSolver
+        
+        iterative_solver = IterativeSolver(
+            renderer=self.renderer,
+            scorer=self.scorer,
+            guess_generator=self.guess_generator
         )
         
-        self.logger.info(f"  → Teste {len(guesses)} moegliche Loesungen...")
+        # Solve iteratively, trying different anchor pieces
+        solution = iterative_solver.solve_iteratively(
+            piece_shapes=piece_shapes,
+            piece_corner_info=piece_corner_info,
+            target=target,
+            score_threshold=50000.0,  # Stop if we get a good score
+            max_iterations=6  # Try all pieces if needed
+        )
         
-        # Find best solution
-        best_score = -float('inf')
-        best_guess = None
-        best_guess_index = 0  # Track the index
-        best_rendered = None
+        if not solution.success:
+            self.logger.warning("  ! Keine gute Loesung gefunden")
+        else:
+            self.logger.info(f"  ✓ Loesung gefunden mit Score: {solution.score:.2f}")
         
-        for i, guess in enumerate(guesses):
-            rendered = self.renderer.render(guess, piece_shapes)
-            score = self.scorer.score(rendered, target)
-            
-            if score > best_score:
-                best_score = score
-                best_guess = guess
-                best_guess_index = i  # Save the index
-                best_rendered = rendered
-                self.logger.info(f"  → Neuer Bestwert: {best_score:.2f} bei Guess #{i}")
-            
-            # Progress logging
-            if i % 500 == 0 and i > 0:
-                self.logger.info(f"  → Fortschritt: {i}/{len(guesses)}, bester Score: {best_score:.2f}")
-        
-        self.logger.info(f"  ✓ Beste Loesung gefunden mit Score: {best_score:.2f}")
+        # For visualization, we only have the final solution
+        # Create a single-item list for compatibility with UI
+        guesses = [solution.remaining_placements] if solution.remaining_placements else []
         
         return {
-            'placements': best_guess,
-            'score': best_score,
-            'rendered': best_rendered,
+            'placements': solution.remaining_placements,
+            'score': solution.score,
+            'rendered': None,  # Can render later if needed
             'target': target,
-            'guesses': guesses,
+            'guesses': guesses,  # Just the final solution for now
             'piece_shapes': piece_shapes,
-            'best_score': best_score,
-            'best_guess': best_guess,  # Save the actual best guess
-            'best_guess_index': best_guess_index  # Save the index
+            'best_score': solution.score,
+            'best_guess': solution.remaining_placements,
+            'best_guess_index': 0
         }
-    
+
+
     def _create_target_layout(self, num_pieces):
         """Erstelle Ziel-Layout basierend auf Anzahl Teile"""
         target = np.zeros((800, 800), dtype=np.uint8)
         
         if num_pieces == 4:
-            # Target should match ~420x594 A4 size, centered in 800x800
-            # Center the A4 area
-            x_offset = (800 - 420) // 2  # ~190
-            y_offset = (800 - 594) // 2  # ~103
+            x_offset = (800 - 420) // 2
+            y_offset = (800 - 594) // 2
             
             target[y_offset:y_offset+594, x_offset:x_offset+420] = 1
+            
+            target_area = np.sum(target > 0)
+            self.logger.info(f"  → Target: 420x594 at ({x_offset}, {y_offset}), area={target_area}")
+        else:
+            # Default fallback
+            target[100:700, 100:700] = 1
+            self.logger.warning(f"  ! Unknown piece count: {num_pieces}, using default target")
+        
+        # DEBUG: Check if target is actually filled
+        if np.sum(target) == 0:
+            self.logger.error("  ❌ TARGET IS EMPTY!")
         
         return target
 

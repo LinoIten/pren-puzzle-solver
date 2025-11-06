@@ -18,7 +18,9 @@ class VisionConfig:
 @dataclass
 class SolverConfig:
     """Konfiguration für Puzzle-Solver"""
-    max_solve_time: float = 90.0  # 1.5 Minuten
+    max_solve_time: float = 90.0  # 1.5 Minute
+    rotation_step: int = 15  # Rotation increment in degrees
+    coarse_rotation_step: int = 45  # Coarser for initial searchn
 
 @dataclass
 class HardwareConfig:

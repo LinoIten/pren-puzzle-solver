@@ -13,7 +13,7 @@ class BruteForceSolver:
         """
         Try all guesses and return best one.
         """
-        guesses = self.generator.generate_guesses(num_pieces, positions)
+        guesses = self.generator.generate_guesses(num_pieces, positions) # type: ignore
         
         print(f"Testing {len(guesses)} guesses...")
         
