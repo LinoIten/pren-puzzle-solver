@@ -259,9 +259,10 @@ class IterativeSolver:
                         search_range: int = 15,
                         step: float = 1.0) -> CornerFit:
         """Fine-tune rotation around the pre-calculated estimate."""
+
         best_rotation = initial_rotation
         best_score = -float('inf')
-        
+        '''
         # Search around initial rotation
         angle = initial_rotation - search_range
         end_angle = initial_rotation + search_range
@@ -283,11 +284,11 @@ class IterativeSolver:
             angle += step
         
         print(f"    Fine-tuned: {initial_rotation:.1f}° → {best_rotation:.1f}° (Δ{best_rotation - initial_rotation:.1f}°)")
-        
+        '''
         return CornerFit(
             piece_id=piece_id,
             corner_position=corner_pos,
-            rotation=float(best_rotation),  # Cast to float
+            rotation=float(initial_rotation),  # Cast to float
             score=float(best_score)  # Cast to float
         )
 
