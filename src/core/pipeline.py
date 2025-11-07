@@ -4,6 +4,7 @@
 Haupt-Pipeline orchestriert alle Schritte
 """
 from dataclasses import dataclass
+import os
 from time import time
 from typing import Optional
 
@@ -117,7 +118,8 @@ class PuzzlePipeline:
         generator = MockPuzzleGenerator(output_dir="data/mock_pieces")
         
         # Check if we already have saved pieces
-        existing_pieces = list(generator.output_dir.glob("piece_*.png"))
+        all_piece_files = list(generator.output_dir.glob("piece_*.png"))
+        existing_pieces = [p for p in all_piece_files if not p.stem.endswith('_corners')]
         
         if not existing_pieces or self.config.vision.regenerate_mock:
             self.logger.info("  → Generiere Mock-Puzzle...")
@@ -150,7 +152,9 @@ class PuzzlePipeline:
                     (piece_shapes[piece_id] * 255).astype(np.uint8),
                     info
                 )
-                cv2.imwrite(f"data/mock_pieces/piece_{piece_id}_corners.png", vis)
+                debug_dir = "data/mock_pieces/debug"
+                os.makedirs(debug_dir, exist_ok=True)
+                cv2.imwrite(f"{debug_dir}/piece_{piece_id}_corners.png", vis)
         
         self.logger.info(f"  → {len(piece_ids)} Teile geladen und analysiert")
         
@@ -187,20 +191,31 @@ class PuzzlePipeline:
         else:
             self.logger.info(f"  ✓ Loesung gefunden mit Score: {solution.score:.2f}")
         
-        # For visualization, we only have the final solution
-        # Create a single-item list for compatibility with UI
-        guesses = [solution.remaining_placements] if solution.remaining_placements else []
+        # NEW: Use ALL guesses collected during solving
+        all_guesses = solution.all_guesses if solution.all_guesses else []
+        
+        # Add final solution if it's not already in the list
+        if solution.remaining_placements:
+            if not all_guesses or all_guesses[-1] != solution.remaining_placements:
+                all_guesses.append(solution.remaining_placements)
+        
+        self.logger.info(f"  → Collected {len(all_guesses)} guesses for visualization")
+        
+        # Find best guess and its index
+        best_score = solution.score
+        best_guess = solution.remaining_placements
+        best_guess_index = len(all_guesses) - 1 if all_guesses else 0
         
         return {
             'placements': solution.remaining_placements,
             'score': solution.score,
             'rendered': None,  # Can render later if needed
             'target': target,
-            'guesses': guesses,  # Just the final solution for now
+            'guesses': all_guesses,  # ALL guesses, not just final one
             'piece_shapes': piece_shapes,
-            'best_score': solution.score,
-            'best_guess': solution.remaining_placements,
-            'best_guess_index': 0
+            'best_score': best_score,
+            'best_guess': best_guess,
+            'best_guess_index': best_guess_index
         }
 
 
@@ -279,6 +294,7 @@ class PuzzlePipeline:
             'best_guess_index': solution.get('best_guess_index', 0)  # Add this
         }
         
+        self.logger.info(f"  → Passing {len(solution['guesses'])} guesses to visualizer")
+        
         app = SolverVisualizerApp(solver_data)
         app.run()
-        

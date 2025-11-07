@@ -2,7 +2,7 @@
 
 from typing import Dict, List, Tuple, Optional
 import numpy as np
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from src.solver.corner_fitter import CornerFit, CornerFitter
 from src.solver.piece_analyzer import PieceCornerInfo
@@ -17,6 +17,7 @@ class IterativeSolution:
     score: float
     iteration: int
     total_iterations: int
+    all_guesses: Optional[List[List[dict]]] = None  # NEW: All guesses tried
 
 
 class IterativeSolver:
@@ -36,6 +37,8 @@ class IterativeSolver:
         self.scorer = scorer
         self.guess_generator = guess_generator
         self.corner_fitter = CornerFitter(width=800, height=800)
+        self.all_guesses = []  # NEW: Collect all guesses
+        self.all_scores = []   # NEW: Track scores too
     
     def solve_iteratively(self,
                          piece_shapes: Dict[int, np.ndarray],
@@ -57,6 +60,10 @@ class IterativeSolver:
             Best solution found
         """
         print("\n🔄 Starting iterative solving...")
+        
+        # Reset guess collection
+        self.all_guesses = []
+        self.all_scores = []
         
         # Get candidates: pieces with corners first, then all others
         corner_pieces = [
@@ -89,19 +96,16 @@ class IterativeSolver:
                 target
             )
             
-            if solution.success:
-                print(f"✓ Found valid solution with score {solution.score:.1f}")
-                
-                # Keep best solution
-                if best_solution is None or solution.score > best_solution.score:
-                    best_solution = solution
-                
-                # If score is good enough, we can stop
-                if solution.score >= score_threshold:
-                    print(f"🎉 Score exceeds threshold ({score_threshold}), stopping!")
-                    break
-            else:
-                print(f"✗ Solution failed with score {solution.score:.1f}")
+            print(f"✓ Found valid solution with score {solution.score:.1f}")
+            
+            # Keep best solution
+            if best_solution is None or solution.score > best_solution.score:
+                best_solution = solution
+            
+            # If score is good enough, we can stop
+            if solution.score >= score_threshold:
+                print(f"🎉 Score exceeds threshold ({score_threshold}), stopping!")
+                break
         
         if best_solution is None:
             # Return failed solution
@@ -111,12 +115,17 @@ class IterativeSolver:
                 remaining_placements=[],
                 score=-float('inf'),
                 iteration=len(candidates),
-                total_iterations=len(candidates)
+                total_iterations=len(candidates),
+                all_guesses=self.all_guesses  # Include all guesses
             )
         
         print(f"\n🏆 Best solution: score {best_solution.score:.1f}")
+        print(f"📊 Total guesses tried: {len(self.all_guesses)}")
+        
+        # Add all guesses to best solution
+        best_solution.all_guesses = self.all_guesses
+        
         return best_solution
-    # Update _try_piece_as_anchor in iterative_solver.py
 
     def _try_piece_as_anchor(self,
                             candidate: PieceCornerInfo,
@@ -165,16 +174,8 @@ class IterativeSolver:
         
         print(f"  Corner fit score: {best_fit.score:.1f}, final rotation: {best_fit.rotation:.1f}°")
         
-        if best_fit.score < -50000:
-            # This piece doesn't fit well as a corner
-            return IterativeSolution(
-                success=False,
-                anchor_fit=best_fit,
-                remaining_placements=[],
-                score=best_fit.score,
-                iteration=0,
-                total_iterations=1
-            )
+        # Always try to solve remaining pieces, even if corner fit is poor
+        # The final score will determine if this is a good solution
         
         # Now solve for remaining pieces
         remaining_piece_ids = [
@@ -194,13 +195,31 @@ class IterativeSolver:
         
         print(f"  Testing {len(guesses)} placement combinations...")
         
+        if len(guesses) == 0:
+            print("  ⚠️  WARNING: No guesses generated! Check _generate_guesses_with_anchor")
+            return IterativeSolution(
+                success=False,
+                anchor_fit=best_fit,
+                remaining_placements=[],
+                score=-float('inf'),
+                iteration=0,
+                total_iterations=1,
+                all_guesses=[]
+            )
+        
         # Find best placement for remaining pieces
         best_remaining_score = -float('inf')
         best_guess = None
         
         for i, guess in enumerate(guesses):
+            # Store this guess for visualization
+            self.all_guesses.append(guess)
+            
             rendered = self.renderer.render(guess, piece_shapes)
             score = self.scorer.score(rendered, target)
+            
+            # Store score too
+            self.all_scores.append(score)
             
             if score > best_remaining_score:
                 best_remaining_score = score
@@ -216,7 +235,8 @@ class IterativeSolver:
                 remaining_placements=best_guess,
                 score=best_remaining_score,
                 iteration=0,
-                total_iterations=1
+                total_iterations=1,
+                all_guesses=[]  # Will be set at top level
             )
         else:
             return IterativeSolution(
@@ -225,7 +245,8 @@ class IterativeSolver:
                 remaining_placements=[],
                 score=-float('inf'),
                 iteration=0,
-                total_iterations=1
+                total_iterations=1,
+                all_guesses=[]
             )
 
 
@@ -275,57 +296,72 @@ class IterativeSolver:
                                      remaining_piece_ids: List[int],
                                      piece_shapes: Dict[int, np.ndarray],
                                      target: np.ndarray,
-                                     max_guesses: int = 5000) -> List[List[dict]]:
+                                     max_guesses: int = 10) -> List[List[dict]]:
         """
         Generate guesses with one piece fixed as anchor.
+        Simple approach: randomly place all pieces near one corner.
         """
-        from itertools import permutations, product
         import random
         
-        # Generate positions for remaining pieces (focused on target)
-        positions = self.guess_generator.generate_grid_positions(target, grid_spacing=50)
+        print(f"    Generating {max_guesses} guesses for {len(remaining_piece_ids)} pieces...")
         
-        # Sample positions to limit combinatorial explosion
-        sampled_positions = random.sample(positions, min(len(positions), 10))
+        # Get target bounds
+        target_rows, target_cols = np.where(target > 0)
+        if len(target_rows) == 0:
+            print("    ⚠️  WARNING: Target is empty!")
+            return []
         
-        # Rotations
-        rotations = list(range(0, 360, 15))
+        min_x, max_x = target_cols.min(), target_cols.max()
+        min_y, max_y = target_rows.min(), target_rows.max()
+        center_x = (min_x + max_x) / 2
+        center_y = (min_y + max_y) / 2
+        
+        # Define corner regions (quarters of the target area)
+        width = max_x - min_x
+        height = max_y - min_y
+        
+        corners = [
+            ('top_left', min_x, min_x + width//3, min_y, min_y + height//3),
+            ('top_right', max_x - width//3, max_x, min_y, min_y + height//3),
+            ('bottom_left', min_x, min_x + width//3, max_y - height//3, max_y),
+            ('bottom_right', max_x - width//3, max_x, max_y - height//3, max_y),
+        ]
+        
+        print(f"    Target area: x=[{min_x}, {max_x}], y=[{min_y}, {max_y}]")
+        print(f"    Anchor piece {anchor_fit.piece_id} at ({anchor_fit.corner_position[0]:.0f}, {anchor_fit.corner_position[1]:.0f})")
         
         guesses = []
         
-        # Limit permutations
-        piece_perms = list(permutations(remaining_piece_ids))
-        if len(piece_perms) > 6:
-            random.shuffle(piece_perms)
-            piece_perms = piece_perms[:6]
+        for guess_num in range(max_guesses):
+            guess = []
+            
+            # Add ANCHORED piece first
+            guess.append({
+                'piece_id': anchor_fit.piece_id,
+                'x': anchor_fit.corner_position[0],
+                'y': anchor_fit.corner_position[1],
+                'theta': -(anchor_fit.rotation+90)
+            })
+            
+            # Pick a random corner for this guess
+            corner_name, x_min, x_max, y_min, y_max = random.choice(corners)
+            
+            # Place all remaining pieces randomly in that corner
+            for piece_id in remaining_piece_ids:
+                x = random.uniform(x_min, x_max)
+                y = random.uniform(y_min, y_max)
+                theta = random.choice([0, 90, 180, 270])  # Only 4 rotations for now
+                
+                guess.append({
+                    'piece_id': piece_id,
+                    'x': x,
+                    'y': y,
+                    'theta': theta
+                })
+            
+            # Sort by piece_id for consistency
+            guess.sort(key=lambda x: x['piece_id'])
+            guesses.append(guess)
         
-        for piece_order in piece_perms:
-            for rotation_combo in product(rotations, repeat=len(remaining_piece_ids)):
-                for position_combo in product(sampled_positions, repeat=len(remaining_piece_ids)):
-                    guess = []
-                    
-                    # Add ANCHORED piece first
-                    guess.append({
-                        'piece_id': anchor_fit.piece_id,
-                        'x': anchor_fit.corner_position[0],
-                        'y': anchor_fit.corner_position[1],
-                        'theta': anchor_fit.rotation
-                    })
-                    
-                    # Add remaining pieces
-                    for piece_id, pos, theta in zip(piece_order, position_combo, rotation_combo):
-                        guess.append({
-                            'piece_id': piece_id,
-                            'x': pos[0],
-                            'y': pos[1],
-                            'theta': theta
-                        })
-                    
-                    # Sort by piece_id for consistency
-                    guess.sort(key=lambda x: x['piece_id'])
-                    guesses.append(guess)
-                    
-                    if len(guesses) >= max_guesses:
-                        return guesses
-        
+        print(f"    ✓ Generated {len(guesses)} guesses")
         return guesses
