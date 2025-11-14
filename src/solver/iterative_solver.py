@@ -113,6 +113,7 @@ class IterativeSolver:
         best_guess = None
         no_improvement_count = 0
         last_best_score = -float('inf')
+        combo_idx = 0  # Initialize here
         
         for combo_idx, corner_indices in enumerate(all_corner_combinations):
             print(f"\n  === Combination {combo_idx + 1}/{len(all_corner_combinations)} ===")
@@ -188,8 +189,11 @@ class IterativeSolver:
                 print(f"  Best score achieved: {best_score:.1f}")
                 break
         
+        # Calculate final values (combo_idx is now guaranteed to be bound)
+        total_combinations_tried = combo_idx + 1 if combo_idx >= 0 else 0
+        
         print(f"\n🏆 Best solution: score {best_score:.1f}")
-        print(f"📊 Tried {min(combo_idx + 1, len(all_corner_combinations))} corner combinations")
+        print(f"📊 Tried {total_combinations_tried} corner combinations")
         print(f"📊 Total guesses: {len(self.all_guesses)}")
         
         success = best_score >= score_threshold * 0.5  # Success if we get at least 50% of threshold
@@ -197,7 +201,7 @@ class IterativeSolver:
         if not success and best_score > 50000:
             print(f"\n  💡 Score {best_score:.1f} suggests corner pieces might be correct")
             print(f"     but edge/center pieces are misplaced. Consider:")
-            print(f"     - Increasing guesses per combo (currently {num_guesses})")
+            print(f"     - Increasing guesses per combo")
             print(f"     - Smarter placement strategies for non-corner pieces")
         
         return IterativeSolution(
@@ -205,11 +209,11 @@ class IterativeSolver:
             anchor_fit=None,
             remaining_placements=best_guess or [],
             score=best_score,
-            iteration=min(combo_idx + 1, len(all_corner_combinations)),
+            iteration=total_combinations_tried,
             total_iterations=len(all_corner_combinations),
             all_guesses=self.all_guesses
         )
-
+    
     """"
     def _try_piece_as_anchor(self,
                         candidate: PieceCornerInfo,
