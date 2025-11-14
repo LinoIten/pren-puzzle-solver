@@ -68,17 +68,26 @@ class PieceAnalyzer:
             rotation_to_bottom_right = None
             corner_rotations = []
             
-            # Calculate rotation for ALL detected corners
-            for corner_quality in corner_qualities:
+            # Calculate rotation for ALL detected corners WITH fine-tuning
+            for i, corner_quality in enumerate(corner_qualities):
                 bisector_angle = corner_quality.bisector_angle
                 target_bisector = 135.0  # Bottom-right corner's inward bisector
                 
-                # Calculate raw rotation needed
+                # Calculate initial raw rotation
                 raw_rotation = (target_bisector - bisector_angle) % 360
+                initial_rotation = -(raw_rotation + 90)
                 
-                # Apply the transformation that the renderer expects
-                rotation = -(raw_rotation + 90)
-                corner_rotations.append(rotation)
+                # FINE-TUNE the rotation
+                print(f"      Corner {i+1}: quality={corner_quality.overall_score:.3f}, initial={initial_rotation:.1f}°")
+                refined_rotation = PieceAnalyzer._fine_tune_corner_rotation(
+                    piece_id,
+                    mask,
+                    initial_rotation,
+                    search_range=3.0,  # Search ±3 degrees
+                    step=0.15  # 0.15 degree steps 
+                )
+                
+                corner_rotations.append(refined_rotation)
             
             if has_corner and corner_qualities:
                 # Select PRIMARY corner based on quality
@@ -97,6 +106,7 @@ class PieceAnalyzer:
                 dx = primary_corner[0] - cx
                 dy = primary_corner[1] - cy
                 primary_corner_angle = np.degrees(np.arctan2(dy, dx))
+            
             
             return PieceCornerInfo(
                 piece_id=piece_id,
@@ -126,6 +136,122 @@ class PieceAnalyzer:
                 piece_center=(0.0, 0.0)
             )
         
+
+    @staticmethod
+    def _fine_tune_corner_rotation(piece_id: int,
+                                mask: np.ndarray,
+                                initial_rotation: float,
+                                search_range: float = 5.0,
+                                step: float = 0.25) -> float:
+        """
+        Fine-tune rotation by testing angles around initial estimate.
+        Returns the rotation that best fits a bottom-right corner.
+        """
+        # Get piece dimensions
+        piece_h, piece_w = mask.shape
+        
+        # Create test canvas proportional to piece size
+        # Make it 2x the piece size to give room for rotation
+        test_size = int(max(piece_h, piece_w) * 2)
+        
+        target = np.zeros((test_size, test_size), dtype=np.uint8)
+        target[:, :] = 1  # Fill entire area
+        
+        best_rotation = initial_rotation
+        best_score = -float('inf')
+        
+        print(f"        Fine-tuning: test canvas {test_size}x{test_size}, piece {piece_w}x{piece_h}")
+        
+        # Test rotations around initial estimate
+        for angle_offset in np.arange(-search_range, search_range + step, step):
+            test_rotation = initial_rotation + angle_offset
+            
+            # Rotate and crop piece
+            rotated = PieceAnalyzer._rotate_and_crop_piece(mask, test_rotation)
+            if rotated is None:
+                continue
+            
+            rot_h, rot_w = rotated.shape
+            
+            # Place piece in bottom-right corner of test canvas
+            x = test_size - rot_w
+            y = test_size - rot_h
+            
+            # Check if piece fits
+            if x < 0 or y < 0:
+                continue
+            
+            # Render piece on test canvas
+            test_canvas = np.zeros((test_size, test_size), dtype=np.float32)
+            test_canvas[y:y+rot_h, x:x+rot_w] = rotated
+            
+            # Score based on corner alignment
+            # The piece's bottom-right corner should align perfectly with canvas corner
+            piece_br_x = x + rot_w - 1
+            piece_br_y = y + rot_h - 1
+            canvas_br_x = test_size - 1
+            canvas_br_y = test_size - 1
+            
+            # Distance from perfect alignment (lower is better)
+            x_error = abs(piece_br_x - canvas_br_x)
+            y_error = abs(piece_br_y - canvas_br_y)
+            alignment_error = x_error + y_error
+            
+            # Also check edge alignment - edges should be flush with canvas edges
+            # Check bottom edge: how many pixels are in the bottom row?
+            bottom_edge_coverage = np.sum(test_canvas[-1, :] > 0) / test_size
+            # Check right edge: how many pixels are in the right column?
+            right_edge_coverage = np.sum(test_canvas[:, -1] > 0) / test_size
+            
+            # Combined score (minimize alignment error, maximize edge coverage)
+            score = -alignment_error + (bottom_edge_coverage + right_edge_coverage) * 100
+            
+            if score > best_score:
+                best_score = score
+                best_rotation = test_rotation
+        
+        # Calculate improvement
+        improvement = abs(best_rotation - initial_rotation)
+        
+        if improvement > 0.1:  # More than 0.1 degree change
+            print(f"        Refined: {initial_rotation:.2f}° → {best_rotation:.2f}° (Δ{improvement:.2f}°)")
+            return best_rotation
+        else:
+            return initial_rotation
+
+    @staticmethod
+    def _rotate_and_crop_piece(mask: np.ndarray, angle: float) -> Optional[np.ndarray]:
+        """Rotate and crop a piece mask."""
+        if angle == 0:
+            return mask.copy()
+        
+        h, w = mask.shape[:2]
+        center = (w // 2, h // 2)
+        M = cv2.getRotationMatrix2D(center, angle, 1.0)
+        
+        # Calculate new bounding box
+        cos = np.abs(M[0, 0])
+        sin = np.abs(M[0, 1])
+        new_w = int((h * sin) + (w * cos))
+        new_h = int((h * cos) + (w * sin))
+        
+        # Adjust translation
+        M[0, 2] += (new_w / 2) - center[0]
+        M[1, 2] += (new_h / 2) - center[1]
+        
+        rotated = cv2.warpAffine(mask, M, (new_w, new_h))
+        
+        # Crop to actual content bounds
+        piece_points = np.argwhere(rotated > 0)
+        if len(piece_points) == 0:
+            return None
+        
+        min_y, min_x = piece_points.min(axis=0)
+        max_y, max_x = piece_points.max(axis=0)
+        
+        cropped = rotated[min_y:max_y+1, min_x:max_x+1]
+        return cropped
+    
     @staticmethod
     def _measure_edge_straightness(contour: np.ndarray, start_idx: int, end_idx: int) -> float:
         """

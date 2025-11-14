@@ -40,13 +40,14 @@ class IterativeSolver:
         self.corner_fitter = None  # Will be created with target
         self.all_guesses = []
         self.all_scores = []
-    
+        
     def solve_iteratively(self,
                      piece_shapes: Dict[int, np.ndarray],
                      piece_corner_info: Dict[int, PieceCornerInfo],
                      target: np.ndarray,
                      score_threshold: float = 230000.0,
-                     max_corner_combos: int = 100) -> IterativeSolution:
+                     min_acceptable_score: float = 200000.0,
+                     max_corner_combos: int = 200) -> IterativeSolution:
         """
         Try different combinations of corners for each piece.
         """
@@ -86,7 +87,6 @@ class IterativeSolver:
         import itertools
         piece_corner_options = []
         for piece_id, info in corner_pieces:
-            # Each piece can use any of its detected corners
             piece_corner_options.append(list(range(len(info.corner_rotations))))
         
         all_corner_combinations = list(itertools.product(*piece_corner_options))
@@ -94,8 +94,7 @@ class IterativeSolver:
         
         print(f"  Total corner combinations possible: {total_combos}")
         
-        # Prioritize: try best corners first, then explore alternatives
-        # Sort combinations by sum of corner qualities
+        # Prioritize: try best corners first
         def combo_quality(combo_indices):
             total_quality = 0
             for (piece_id, info), corner_idx in zip(corner_pieces, combo_indices):
@@ -113,7 +112,7 @@ class IterativeSolver:
         best_guess = None
         no_improvement_count = 0
         last_best_score = -float('inf')
-        combo_idx = 0  # Initialize here
+        combo_idx = 0
         
         for combo_idx, corner_indices in enumerate(all_corner_combinations):
             print(f"\n  === Combination {combo_idx + 1}/{len(all_corner_combinations)} ===")
@@ -144,7 +143,11 @@ class IterativeSolver:
                 )
             
             # Generate MORE guesses per combo - more chances to get non-corner pieces right
-            num_guesses = 50 if combo_idx < 10 else 20  # More attempts for best combos
+            # Increase attempts dramatically if we haven't reached minimum acceptable score
+            if best_score < min_acceptable_score:
+                num_guesses = 100 if combo_idx < 20 else 50
+            else:
+                num_guesses = 50 if combo_idx < 10 else 20
             
             guesses = self._generate_guesses_with_all_corners(
                 piece_shapes,
@@ -176,6 +179,8 @@ class IterativeSolver:
             # Track improvement
             if best_score <= last_best_score:
                 no_improvement_count += 1
+            else:
+                no_improvement_count = 0  # Reset when we improve
             last_best_score = max(last_best_score, best_score)
             
             # Early exit if we found a great solution
@@ -183,26 +188,46 @@ class IterativeSolver:
                 print(f"\n  🎉 Found solution exceeding threshold ({score_threshold})!")
                 break
             
-            # Early exit if no improvement for many attempts (but only after trying at least 20 combos)
-            if combo_idx >= 20 and no_improvement_count >= 15:
-                print(f"\n  ⚠️  No improvement for 15 combinations, stopping early")
-                print(f"  Best score achieved: {best_score:.1f}")
+            # MORE LENIENT stopping conditions
+            # Only stop early if:
+            # 1. We've tried at least 50 combos
+            # 2. No improvement for 30 consecutive combos
+            # 3. AND we've reached at least the minimum acceptable score
+            should_stop_early = (
+                combo_idx >= 50 and
+                no_improvement_count >= 30 and
+                best_score >= min_acceptable_score
+            )
+            
+            if should_stop_early:
+                print(f"\n  ✓ Reached acceptable score ({best_score:.1f} >= {min_acceptable_score:.1f})")
+                print(f"  No improvement for {no_improvement_count} combinations, stopping")
                 break
+            
+            # Warn if we're stuck below minimum acceptable score
+            if combo_idx > 0 and combo_idx % 25 == 0 and best_score < min_acceptable_score:
+                print(f"\n  ⚠️  After {combo_idx} combos, best score is {best_score:.1f} (target: {min_acceptable_score:.1f})")
+                print(f"  Continuing search...")
         
-        # Calculate final values (combo_idx is now guaranteed to be bound)
+        # Calculate final values
         total_combinations_tried = combo_idx + 1 if combo_idx >= 0 else 0
         
         print(f"\n🏆 Best solution: score {best_score:.1f}")
         print(f"📊 Tried {total_combinations_tried} corner combinations")
         print(f"📊 Total guesses: {len(self.all_guesses)}")
         
-        success = best_score >= score_threshold * 0.5  # Success if we get at least 50% of threshold
+        # Success criteria
+        success = best_score >= min_acceptable_score
         
-        if not success and best_score > 50000:
-            print(f"\n  💡 Score {best_score:.1f} suggests corner pieces might be correct")
-            print(f"     but edge/center pieces are misplaced. Consider:")
-            print(f"     - Increasing guesses per combo")
-            print(f"     - Smarter placement strategies for non-corner pieces")
+        if not success:
+            print(f"\n  ❌ Failed to reach minimum acceptable score of {min_acceptable_score:.1f}")
+            if best_score > 50000:
+                print(f"  💡 Score {best_score:.1f} suggests corner pieces might be correct")
+                print(f"     but edge/center pieces are misplaced.")
+                print(f"     The solver tried {total_combinations_tried} corner combinations.")
+        elif best_score < score_threshold:
+            print(f"\n  ⚠️  Reached acceptable score but not optimal threshold")
+            print(f"     Acceptable: {min_acceptable_score:.1f}, Achieved: {best_score:.1f}, Target: {score_threshold:.1f}")
         
         return IterativeSolution(
             success=success,
@@ -213,7 +238,6 @@ class IterativeSolver:
             total_iterations=len(all_corner_combinations),
             all_guesses=self.all_guesses
         )
-    
     """"
     def _try_piece_as_anchor(self,
                         candidate: PieceCornerInfo,
@@ -398,7 +422,7 @@ class IterativeSolver:
         print(f"  Non-corner pieces: {non_corner_piece_ids}")
         
         guesses = []
-        num_permutations = min(max_guesses, 24)
+        num_permutations = max_guesses
         
         if len(corner_pieces) <= len(corners):
             available_corners = corners[:len(corner_pieces)]
