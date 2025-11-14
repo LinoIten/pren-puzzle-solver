@@ -187,8 +187,7 @@ class PuzzlePipeline:
             piece_shapes=piece_shapes,
             piece_corner_info=piece_corner_info,
             target=target,
-            score_threshold=50000.0,
-            max_iterations=6
+            score_threshold=230000.0
         )
         
         if not solution.success:

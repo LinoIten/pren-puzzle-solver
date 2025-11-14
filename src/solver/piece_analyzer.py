@@ -18,6 +18,7 @@ class CornerQuality:
     overall_score: float  # Combined quality score
 
 
+
 @dataclass
 class PieceCornerInfo:
     """Information about a piece's corner characteristics."""
@@ -25,9 +26,10 @@ class PieceCornerInfo:
     has_corner: bool
     corner_count: int
     corner_positions: List[Tuple[int, int]]
-    corner_qualities: List[CornerQuality]  # NEW: Quality info for each corner
+    corner_qualities: List[CornerQuality]
+    corner_rotations: List[float]  
     primary_corner_angle: Optional[float]
-    rotation_to_bottom_right: Optional[float]
+    rotation_to_bottom_right: Optional[float] 
     piece_center: Tuple[float, float]
 
 
@@ -64,33 +66,32 @@ class PieceAnalyzer:
             
             primary_corner_angle = None
             rotation_to_bottom_right = None
+            corner_rotations = []
+            
+            # Calculate rotation for ALL detected corners
+            for corner_quality in corner_qualities:
+                bisector_angle = corner_quality.bisector_angle
+                target_bisector = 135.0  # Bottom-right corner's inward bisector
+                
+                # Calculate raw rotation needed
+                raw_rotation = (target_bisector - bisector_angle) % 360
+                
+                # Apply the transformation that the renderer expects
+                rotation = -(raw_rotation + 90)
+                corner_rotations.append(rotation)
             
             if has_corner and corner_qualities:
-                # Select PRIMARY corner based on quality, not just distance
-                # Prioritize: 90° accuracy > straightness > distance from center
+                # Select PRIMARY corner based on quality
                 primary_corner_quality = max(corner_qualities, key=lambda cq: cq.overall_score)
                 primary_corner = primary_corner_quality.position
                 
-                print(f"    Piece {piece_id} primary corner quality:")
-                print(f"      Angle: {primary_corner_quality.angle:.1f}° (score: {primary_corner_quality.angle_score:.3f})")
-                print(f"      Edge straightness: {primary_corner_quality.edge1_straightness:.3f}, {primary_corner_quality.edge2_straightness:.3f}")
-                print(f"      Bisector points at: {primary_corner_quality.bisector_angle:.1f}°")
-                print(f"      Overall score: {primary_corner_quality.overall_score:.3f}")
+                print(f"    Piece {piece_id} detected {len(corner_qualities)} corner(s):")
+                for i, (cq, rot) in enumerate(zip(corner_qualities, corner_rotations)):
+                    marker = "⭐" if i == 0 else "  "
+                    print(f"      {marker} Corner {i+1}: quality={cq.overall_score:.3f}, rotation={rot:.1f}°")
                 
-                # For a bottom-right corner in a rectangular target:
-                # The vectors v1 and v2 point FROM the corner TO adjacent points (inward)
-                # So the bisector points INWARD toward the piece center
-                # For a bottom-right corner, the inward bisector points at 135° (northwest)
-
-                bisector_angle = primary_corner_quality.bisector_angle
-                target_bisector = 135.0  # Bottom-right corner's inward bisector
-
-                # Calculate raw rotation needed
-                raw_rotation = (target_bisector - bisector_angle) % 360
-
-                # Apply the transformation that the renderer expects
-                # This is the theta value we'll use directly in guesses
-                rotation_to_bottom_right = -(raw_rotation + 90)
+                # Store primary corner rotation
+                rotation_to_bottom_right = corner_rotations[0]
                 
                 # Also store the position-based angle for reference
                 dx = primary_corner[0] - cx
@@ -103,6 +104,7 @@ class PieceAnalyzer:
                 corner_count=corner_count,
                 corner_positions=corners,
                 corner_qualities=corner_qualities,
+                corner_rotations=corner_rotations,  # NEW: All rotations
                 primary_corner_angle=primary_corner_angle,
                 rotation_to_bottom_right=rotation_to_bottom_right,
                 piece_center=piece_center
@@ -118,6 +120,7 @@ class PieceAnalyzer:
                 corner_count=0,
                 corner_positions=[],
                 corner_qualities=[],
+                corner_rotations=[],  # NEW
                 primary_corner_angle=None,
                 rotation_to_bottom_right=None,
                 piece_center=(0.0, 0.0)

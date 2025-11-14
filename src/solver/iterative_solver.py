@@ -45,10 +45,10 @@ class IterativeSolver:
                      piece_shapes: Dict[int, np.ndarray],
                      piece_corner_info: Dict[int, PieceCornerInfo],
                      target: np.ndarray,
-                     score_threshold: float = 100000.0,
-                     max_iterations: int = 6) -> IterativeSolution:
+                     score_threshold: float = 230000.0,
+                     max_corner_combos: int = 100) -> IterativeSolution:
         """
-        Generate guesses with all corner pieces placed in corners.
+        Try different combinations of corners for each piece.
         """
         print("\n🔄 Starting iterative solving...")
         
@@ -59,16 +59,15 @@ class IterativeSolver:
         self.all_guesses = []
         self.all_scores = []
         
-        # Generate guesses with ALL corner pieces in corners
-        guesses = self._generate_guesses_with_all_corners(
-            piece_shapes,
-            piece_corner_info,
-            target,
-            max_guesses=max_iterations * 10  # More guesses since we're trying permutations
-        )
+        # Find pieces with corners
+        corner_pieces = [
+            (piece_id, info) 
+            for piece_id, info in piece_corner_info.items() 
+            if info.has_corner and len(info.corner_rotations) > 0
+        ]
         
-        if not guesses:
-            print("  ⚠️  No guesses generated!")
+        if not corner_pieces:
+            print("  ⚠️  No corner pieces found!")
             return IterativeSolution(
                 success=False,
                 anchor_fit=None,
@@ -79,42 +78,138 @@ class IterativeSolver:
                 all_guesses=[]
             )
         
-        print(f"  Testing {len(guesses)} placement combinations...")
+        print(f"\n  Found {len(corner_pieces)} pieces with corners:")
+        for piece_id, info in corner_pieces:
+            print(f"    Piece {piece_id}: {len(info.corner_rotations)} corners detected")
+        
+        # Generate all combinations of corner selections
+        import itertools
+        piece_corner_options = []
+        for piece_id, info in corner_pieces:
+            # Each piece can use any of its detected corners
+            piece_corner_options.append(list(range(len(info.corner_rotations))))
+        
+        all_corner_combinations = list(itertools.product(*piece_corner_options))
+        total_combos = len(all_corner_combinations)
+        
+        print(f"  Total corner combinations possible: {total_combos}")
+        
+        # Prioritize: try best corners first, then explore alternatives
+        # Sort combinations by sum of corner qualities
+        def combo_quality(combo_indices):
+            total_quality = 0
+            for (piece_id, info), corner_idx in zip(corner_pieces, combo_indices):
+                total_quality += info.corner_qualities[corner_idx].overall_score
+            return total_quality
+        
+        all_corner_combinations.sort(key=combo_quality, reverse=True)
+        
+        # Limit combinations
+        if total_combos > max_corner_combos:
+            print(f"  Limiting to best {max_corner_combos} combinations (by quality)")
+            all_corner_combinations = all_corner_combinations[:max_corner_combos]
         
         best_score = -float('inf')
         best_guess = None
+        no_improvement_count = 0
+        last_best_score = -float('inf')
         
-        for i, guess in enumerate(guesses):
-            self.all_guesses.append(guess)
+        for combo_idx, corner_indices in enumerate(all_corner_combinations):
+            print(f"\n  === Combination {combo_idx + 1}/{len(all_corner_combinations)} ===")
             
-            rendered = self.renderer.render(guess, piece_shapes)
-            score = self.scorer.score(rendered, target)
+            # Calculate quality of this combination
+            combo_qual = combo_quality(corner_indices)
+            print(f"  Corner indices: {corner_indices} (combined quality: {combo_qual:.3f})")
             
-            self.all_scores.append(score)
+            # Create modified corner info using selected corners
+            modified_corner_info = {}
             
-            if score > best_score:
-                best_score = score
-                best_guess = guess
+            for (piece_id, info), corner_idx in zip(corner_pieces, corner_indices):
+                selected_rotation = info.corner_rotations[corner_idx]
+                selected_quality = info.corner_qualities[corner_idx]
+                
+                print(f"    Piece {piece_id}: Corner #{corner_idx+1}, quality={selected_quality.overall_score:.3f}, rotation={selected_rotation:.1f}°")
+                
+                modified_corner_info[piece_id] = PieceCornerInfo(
+                    piece_id=piece_id,
+                    has_corner=True,
+                    corner_count=1,
+                    corner_positions=[selected_quality.position],
+                    corner_qualities=[selected_quality],
+                    corner_rotations=[selected_rotation],
+                    primary_corner_angle=None,
+                    rotation_to_bottom_right=selected_rotation,
+                    piece_center=info.piece_center
+                )
             
-            if i % 10 == 0 and i > 0:
-                print(f"    Progress: {i}/{len(guesses)}, best: {best_score:.1f}")
+            # Generate MORE guesses per combo - more chances to get non-corner pieces right
+            num_guesses = 50 if combo_idx < 10 else 20  # More attempts for best combos
             
-            # Early stop if we found a great solution
-            if score >= score_threshold:
-                print(f"    🎉 Found solution exceeding threshold!")
+            guesses = self._generate_guesses_with_all_corners(
+                piece_shapes,
+                modified_corner_info,
+                target,
+                max_guesses=num_guesses
+            )
+            
+            if not guesses:
+                continue
+            
+            # Score all guesses
+            combo_best = -float('inf')
+            for guess in guesses:
+                self.all_guesses.append(guess)
+                rendered = self.renderer.render(guess, piece_shapes)
+                score = self.scorer.score(rendered, target)
+                self.all_scores.append(score)
+                
+                if score > combo_best:
+                    combo_best = score
+                if score > best_score:
+                    best_score = score
+                    best_guess = guess
+                    no_improvement_count = 0  # Reset counter
+            
+            print(f"  Combo best: {combo_best:.1f}, Overall best: {best_score:.1f}")
+            
+            # Track improvement
+            if best_score <= last_best_score:
+                no_improvement_count += 1
+            last_best_score = max(last_best_score, best_score)
+            
+            # Early exit if we found a great solution
+            if best_score >= score_threshold:
+                print(f"\n  🎉 Found solution exceeding threshold ({score_threshold})!")
+                break
+            
+            # Early exit if no improvement for many attempts (but only after trying at least 20 combos)
+            if combo_idx >= 20 and no_improvement_count >= 15:
+                print(f"\n  ⚠️  No improvement for 15 combinations, stopping early")
+                print(f"  Best score achieved: {best_score:.1f}")
                 break
         
         print(f"\n🏆 Best solution: score {best_score:.1f}")
+        print(f"📊 Tried {min(combo_idx + 1, len(all_corner_combinations))} corner combinations")
+        print(f"📊 Total guesses: {len(self.all_guesses)}")
+        
+        success = best_score >= score_threshold * 0.5  # Success if we get at least 50% of threshold
+        
+        if not success and best_score > 50000:
+            print(f"\n  💡 Score {best_score:.1f} suggests corner pieces might be correct")
+            print(f"     but edge/center pieces are misplaced. Consider:")
+            print(f"     - Increasing guesses per combo (currently {num_guesses})")
+            print(f"     - Smarter placement strategies for non-corner pieces")
         
         return IterativeSolution(
-            success=best_score > 0,
+            success=success,
             anchor_fit=None,
             remaining_placements=best_guess or [],
             score=best_score,
-            iteration=len(guesses),
-            total_iterations=len(guesses),
+            iteration=min(combo_idx + 1, len(all_corner_combinations)),
+            total_iterations=len(all_corner_combinations),
             all_guesses=self.all_guesses
         )
+
     """"
     def _try_piece_as_anchor(self,
                         candidate: PieceCornerInfo,
