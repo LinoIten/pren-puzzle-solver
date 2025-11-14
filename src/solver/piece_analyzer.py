@@ -81,11 +81,16 @@ class PieceAnalyzer:
                 # The vectors v1 and v2 point FROM the corner TO adjacent points (inward)
                 # So the bisector points INWARD toward the piece center
                 # For a bottom-right corner, the inward bisector points at 135° (northwest)
-                
+
                 bisector_angle = primary_corner_quality.bisector_angle
                 target_bisector = 135.0  # Bottom-right corner's inward bisector
-                
-                rotation_to_bottom_right = (target_bisector - bisector_angle) % 360
+
+                # Calculate raw rotation needed
+                raw_rotation = (target_bisector - bisector_angle) % 360
+
+                # Apply the transformation that the renderer expects
+                # This is the theta value we'll use directly in guesses
+                rotation_to_bottom_right = -(raw_rotation + 90)
                 
                 # Also store the position-based angle for reference
                 dx = primary_corner[0] - cx
@@ -117,7 +122,7 @@ class PieceAnalyzer:
                 rotation_to_bottom_right=None,
                 piece_center=(0.0, 0.0)
             )
-    
+        
     @staticmethod
     def _measure_edge_straightness(contour: np.ndarray, start_idx: int, end_idx: int) -> float:
         """
@@ -142,21 +147,21 @@ class PieceAnalyzer:
         p_end = edge_points[-1][0]
         
         # Calculate ideal straight line distance
-        straight_dist = np.linalg.norm(p_end - p_start)
+        straight_dist = float(np.linalg.norm(p_end - p_start))
         
         if straight_dist < 1:
             return 1.0
         
         # Calculate actual path length
-        path_dist = 0
+        path_dist = 0.0
         for i in range(len(edge_points) - 1):
             p1 = edge_points[i][0]
             p2 = edge_points[i + 1][0]
-            path_dist += np.linalg.norm(p2 - p1)
+            path_dist += float(np.linalg.norm(p2 - p1))
         
         # Straightness = straight_dist / path_dist
         # If path is curved, path_dist > straight_dist
-        straightness = straight_dist / path_dist if path_dist > 0 else 0
+        straightness = float(straight_dist / path_dist if path_dist > 0 else 0.0)
         
         return min(1.0, straightness)
     
@@ -293,14 +298,14 @@ class PieceAnalyzer:
             )
             
             corner_quality = CornerQuality(
-                position=tuple(map(int, p_curr)),
-                angle=angle,
-                angle_score=angle_score,
-                edge1_straightness=edge1_straightness,
-                edge2_straightness=edge2_straightness,
-                edge_lengths=(v1_len, v2_len),
-                bisector_angle=bisector_angle,
-                overall_score=overall_score
+                position=(int(p_curr[0]), int(p_curr[1])),  # Explicit tuple of 2 ints
+                angle=float(angle),
+                angle_score=float(angle_score),
+                edge1_straightness=float(edge1_straightness),
+                edge2_straightness=float(edge2_straightness),
+                edge_lengths=(float(v1_len), float(v2_len)),  # Explicit tuple of 2 floats
+                bisector_angle=float(bisector_angle),
+                overall_score=float(overall_score)
             )
             
             corner_qualities.append(corner_quality)

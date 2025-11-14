@@ -40,21 +40,20 @@ class PuzzlePipeline:
     5. Validierung
     6. (PREN2) Hardware-Steuerung
     """
-    
+
     def __init__(self, config: Config, show_ui: bool = False):
         self.config = config
         self.logger = setup_logger("pipeline")
         self.show_ui = show_ui
         
-        # Initialize solver components - match smaller piece size
+        # Initialize solver components - renderer will be created with target
         self.guess_generator = GuessGenerator(rotation_step=90)
-        self.renderer = GuessRenderer(width=800, height=800)  # Back to reasonable size
+        self.renderer = None  # Will be created after we have target
         self.scorer = PlacementScorer(
             overlap_penalty=2.0,
             coverage_reward=1.0,
             gap_penalty=0.5
         )
-
         
     def run(self) -> PipelineResult:
         """Fuehrt die komplette Pipeline aus"""
@@ -164,8 +163,14 @@ class PuzzlePipeline:
         """Puzzle loesen mit iterativem Ansatz"""
         self.logger.info("  → Layout berechnen...")
         
-        # Create target
+        # Create target with exact dimensions
         target = self._create_target_layout(len(pieces))
+        
+        self.logger.info(f"  → Target dimensions: {target.shape}")
+        
+        # Create renderer to match target dimensions
+        height, width = target.shape
+        self.renderer = GuessRenderer(width=width, height=height)
         
         self.logger.info("  → Iteratives Loesen starten...")
         
@@ -182,8 +187,8 @@ class PuzzlePipeline:
             piece_shapes=piece_shapes,
             piece_corner_info=piece_corner_info,
             target=target,
-            score_threshold=50000.0,  # Stop if we get a good score
-            max_iterations=6  # Try all pieces if needed
+            score_threshold=50000.0,
+            max_iterations=6
         )
         
         if not solution.success:
@@ -209,38 +214,33 @@ class PuzzlePipeline:
         return {
             'placements': solution.remaining_placements,
             'score': solution.score,
-            'rendered': None,  # Can render later if needed
+            'rendered': None,
             'target': target,
-            'guesses': all_guesses,  # ALL guesses, not just final one
+            'guesses': all_guesses,
             'piece_shapes': piece_shapes,
             'best_score': best_score,
             'best_guess': best_guess,
-            'best_guess_index': best_guess_index
+            'best_guess_index': best_guess_index,
+            'renderer': self.renderer  # Pass renderer to UI
         }
-
-
+    
     def _create_target_layout(self, num_pieces):
         """Erstelle Ziel-Layout basierend auf Anzahl Teile"""
-        target = np.zeros((800, 800), dtype=np.uint8)
         
-        if num_pieces == 4:
-            x_offset = (800 - 420) // 2
-            y_offset = (800 - 594) // 2
-            
-            target[y_offset:y_offset+594, x_offset:x_offset+420] = 1
-            
-            target_area = np.sum(target > 0)
-            self.logger.info(f"  → Target: 420x594 at ({x_offset}, {y_offset}), area={target_area}")
-        else:
-            # Default fallback
-            target[100:700, 100:700] = 1
-            self.logger.warning(f"  ! Unknown piece count: {num_pieces}, using default target")
+        width = 420
+        height = 594
+        # Create target with EXACT dimensions needed
+        target = np.ones((height, width), dtype=np.uint8)
+        
+        target_area = np.sum(target > 0)
+        self.logger.info(f"  → Target: {width}x{height}, area={target_area}")
         
         # DEBUG: Check if target is actually filled
         if np.sum(target) == 0:
             self.logger.error("  ❌ TARGET IS EMPTY!")
         
         return target
+
 
     def _validate_solution(self, solution):
         """Loesung validieren"""
@@ -290,8 +290,9 @@ class PuzzlePipeline:
             'piece_shapes': solution['piece_shapes'],
             'target': solution['target'],
             'best_score': solution['best_score'],
-            'best_guess': solution.get('best_guess'),  # Add this
-            'best_guess_index': solution.get('best_guess_index', 0)  # Add this
+            'best_guess': solution.get('best_guess'),
+            'best_guess_index': solution.get('best_guess_index', 0),
+            'renderer': solution['renderer']  # Add the renderer
         }
         
         self.logger.info(f"  → Passing {len(solution['guesses'])} guesses to visualizer")

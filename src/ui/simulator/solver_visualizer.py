@@ -75,6 +75,40 @@ class SolverVisualizer(BoxLayout):
         # Show initial state
         self._show_target()
     
+    def step_guess(self, instance):
+        """Show the next guess."""
+        if self.current_guess_index < len(self.solver_data['guesses']):
+            guess = self.solver_data['guesses'][self.current_guess_index]
+            
+            from ...solver.validation.scorer import PlacementScorer
+            
+            # Use the renderer passed from pipeline
+            renderer = self.solver_data['renderer']
+            scorer = PlacementScorer(overlap_penalty=2.0, coverage_reward=1.0, gap_penalty=0.5)
+            
+            # Render grayscale for scoring
+            rendered = renderer.render(guess, self.solver_data['piece_shapes'])
+            score = scorer.score(rendered, self.solver_data['target'])
+            
+            # Render in DEBUG mode to show bounding boxes
+            rendered_color = renderer.render_debug(guess, self.solver_data['piece_shapes'])
+            
+            # Create visualization
+            display = self._create_visualization(rendered_color, self.solver_data['target'])
+            
+            # Update display
+            self._update_image(display)
+            
+            is_best = score >= self.solver_data['best_score']
+            best_marker = " ⭐ NEW BEST!" if is_best else ""
+            
+            self.status_label.text = (
+                f'Guess {self.current_guess_index + 1}/{len(self.solver_data["guesses"])} | '
+                f'Score: {score:.2f}{best_marker}'
+            )
+            
+            self.current_guess_index += 1
+            
     def show_best(self, instance):
         """Show the best solution found."""
         # Pause if running
@@ -90,10 +124,8 @@ class SolverVisualizer(BoxLayout):
             self.status_label.text = "No best solution found!"
             return
         
-        # Render the best guess in color
-        from ..simulator.guess_renderer import GuessRenderer
-        
-        renderer = GuessRenderer(width=800, height=800)
+        # Use the renderer passed from pipeline
+        renderer = self.solver_data['renderer']
         rendered_color = renderer.render_color(best_guess, self.solver_data['piece_shapes'])
         
         # Create visualization
@@ -110,7 +142,6 @@ class SolverVisualizer(BoxLayout):
         
         # Update current index
         self.current_guess_index = best_guess_index
-        
     def _show_target(self):
         """Show the target layout initially."""
         target = self.solver_data['target']
@@ -163,55 +194,17 @@ class SolverVisualizer(BoxLayout):
             self.pause_visualization(None)
             self.status_label.text = f'DONE! Best score: {self.solver_data["best_score"]:.2f}'
     
-    def step_guess(self, instance):
-        """Show the next guess."""
-        if self.current_guess_index < len(self.solver_data['guesses']):
-            guess = self.solver_data['guesses'][self.current_guess_index]
-            
-            # Render the guess IN COLOR
-            from ..simulator.guess_renderer import GuessRenderer
-            from ...solver.validation.scorer import PlacementScorer
-            
-            renderer = GuessRenderer(width=800, height=800)
-            scorer = PlacementScorer(overlap_penalty=2.0, coverage_reward=1.0, gap_penalty=0.5)
-            
-            # Render grayscale for scoring
-            rendered = renderer.render(guess, self.solver_data['piece_shapes'])
-            score = scorer.score(rendered, self.solver_data['target'])
-            
-            # Render in color for display
-            rendered_color = renderer.render_color(guess, self.solver_data['piece_shapes'])
-            
-            # Create visualization with target overlay
-            display = self._create_visualization(rendered_color, self.solver_data['target'])
-            
-            # Update display
-            self._update_image(display)
-            
-            is_best = score >= self.solver_data['best_score']
-            best_marker = " ⭐ NEW BEST!" if is_best else ""
-            
-            self.status_label.text = (
-                f'Guess {self.current_guess_index + 1}/{len(self.solver_data["guesses"])} | '
-                f'Score: {score:.2f}{best_marker}'
-            )
-            
-            self.current_guess_index += 1
-    
     def _create_visualization(self, rendered_color, target):
-        """Create visualization with target overlay."""
+        """Create visualization - rendered_color is already in target space."""
         display = rendered_color.copy()
         
-        # Overlay target in white/gray outline
-        target_outline = np.zeros_like(display)
-        target_outline[target > 0] = [200, 200, 200]
+        # Draw target outline (which should match the canvas now)
+        h, w = display.shape[:2]
         
-        # Blend
-        alpha = 0.3
-        display = cv2.addWeighted(display, 1.0, target_outline, alpha, 0)
+        # Draw border around entire canvas (which IS the target)
+        cv2.rectangle(display, (0, 0), (w-1, h-1), (255, 255, 100), 2)
         
         # Draw grid
-        h, w = display.shape[:2]
         for i in range(0, h, 100):
             cv2.line(display, (0, i), (w, i), (80, 80, 80), 1)
         for i in range(0, w, 100):
