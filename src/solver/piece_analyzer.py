@@ -14,6 +14,7 @@ class CornerQuality:
     edge1_straightness: float  # How straight the first edge is (0-1)
     edge2_straightness: float  # How straight the second edge is (0-1)
     edge_lengths: Tuple[float, float]  # Lengths of adjacent edges
+    edge_length_score: float  # Score based on edge lengths (0-1)
     bisector_angle: float  # Angle of corner bisector (direction corner "points")
     overall_score: float  # Combined quality score
 
@@ -78,7 +79,7 @@ class PieceAnalyzer:
                 initial_rotation = -(raw_rotation + 90)
                 
                 # FINE-TUNE the rotation
-                print(f"      Corner {i+1}: quality={corner_quality.overall_score:.3f}, initial={initial_rotation:.1f}°")
+                print(f"      Corner {i+1}: quality={corner_quality.overall_score:.3f}, edge_score={corner_quality.edge_length_score:.3f}, initial={initial_rotation:.1f}°")
                 refined_rotation = PieceAnalyzer._fine_tune_corner_rotation(
                     piece_id,
                     mask,
@@ -96,11 +97,13 @@ class PieceAnalyzer:
                 
                 print(f"    Piece {piece_id} detected {len(corner_qualities)} corner(s):")
                 for i, (cq, rot) in enumerate(zip(corner_qualities, corner_rotations)):
-                    marker = "⭐" if i == 0 else "  "
-                    print(f"      {marker} Corner {i+1}: quality={cq.overall_score:.3f}, rotation={rot:.1f}°")
+                    is_primary = cq == primary_corner_quality
+                    marker = "⭐" if is_primary else "  "
+                    print(f"      {marker} Corner {i+1}: quality={cq.overall_score:.3f}, edges={cq.edge_lengths[0]:.1f}/{cq.edge_lengths[1]:.1f}px, rotation={rot:.1f}°")
                 
-                # Store primary corner rotation
-                rotation_to_bottom_right = corner_rotations[0]
+                # Store primary corner rotation (the one with highest quality)
+                primary_idx = corner_qualities.index(primary_corner_quality)
+                rotation_to_bottom_right = corner_rotations[primary_idx]
                 
                 # Also store the position-based angle for reference
                 dx = primary_corner[0] - cx
@@ -164,7 +167,7 @@ class PieceAnalyzer:
         
         # Test rotations around initial estimate
         for angle_offset in np.arange(-search_range, search_range + step, step):
-            test_rotation = initial_rotation + angle_offset
+            test_rotation = float(initial_rotation + angle_offset)
             
             # Rotate and crop piece
             rotated = PieceAnalyzer._rotate_and_crop_piece(mask, test_rotation)
@@ -215,9 +218,9 @@ class PieceAnalyzer:
         
         if improvement > 0.1:  # More than 0.1 degree change
             print(f"        Refined: {initial_rotation:.2f}° → {best_rotation:.2f}° (Δ{improvement:.2f}°)")
-            return best_rotation
+            return float(best_rotation)
         else:
-            return initial_rotation
+            return float(initial_rotation)
 
     @staticmethod
     def _rotate_and_crop_piece(mask: np.ndarray, angle: float) -> Optional[np.ndarray]:
@@ -299,7 +302,7 @@ class PieceAnalyzer:
                                      piece_center: Tuple[float, float]) -> List[CornerQuality]:
         """
         Robust 90-degree corner detection with quality metrics.
-        Returns corners sorted by quality.
+        Returns corners sorted by quality, prioritizing long straight edges.
         """
         # Ensure uint8 binary mask
         if mask.dtype != np.uint8:
@@ -320,12 +323,25 @@ class PieceAnalyzer:
 
         cx, cy = piece_center
         
+        # Calculate piece size metrics for dynamic scoring
+        piece_h, piece_w = mask.shape
+        piece_area = np.sum(mask > 0)
+        piece_perimeter = cv2.arcLength(contour, True)
+        
+        # Estimate "typical" edge length for this piece
+        # For a square piece, each edge would be roughly perimeter/4
+        # But puzzle pieces are irregular, so use a more conservative estimate
+        typical_edge_length = piece_perimeter / 6  # Assume ~6 edges on average
+        
+        # Also use piece dimensions as reference
+        piece_size_ref = min(piece_h, piece_w)  # Smaller dimension
+        
         corner_qualities = []
         
         # Parameters for corner detection
         ANGLE_TOL = 10  # Must be within 10 degrees of 90°
         MIN_STRAIGHTNESS = 0.85  # Edges must be at least 85% straight
-        MIN_EDGE_LENGTH = 15  # Minimum edge length in pixels
+        MIN_EDGE_LENGTH = 15  # Absolute minimum edge length in pixels
         
         for i in range(n):
             p_prev = approx[(i - 1) % n][0]
@@ -338,7 +354,7 @@ class PieceAnalyzer:
             v1_len = np.linalg.norm(v1)
             v2_len = np.linalg.norm(v2)
             
-            # Skip if edges too short
+            # Skip if edges too short (absolute minimum)
             if v1_len < MIN_EDGE_LENGTH or v2_len < MIN_EDGE_LENGTH:
                 continue
 
@@ -361,8 +377,8 @@ class PieceAnalyzer:
             # Measure straightness of adjacent edges
             # We need to find the actual contour segments, not just the approximated points
             idx_curr = -1
-            for j, pt in enumerate(contour):
-                if np.array_equal(pt[0], p_curr):
+            for j in range(len(contour)):
+                if np.array_equal(contour[j][0], p_curr):
                     idx_curr = j
                     break
             
@@ -404,6 +420,33 @@ class PieceAnalyzer:
             max_distance = np.sqrt(mask.shape[0]**2 + mask.shape[1]**2) / 2
             distance_score = distance_from_center / max_distance
             
+            # === DYNAMIC EDGE LENGTH SCORING ===
+            # This is the key improvement: score based on how the edge lengths compare to piece size
+            
+            # Calculate scores relative to piece-specific metrics
+            min_edge_len = min(v1_len, v2_len)
+            avg_edge_len = (v1_len + v2_len) / 2
+            
+            # Score 1: Compare to typical edge length (perimeter-based)
+            # A corner edge should be at least 30-40% of typical edge length
+            perimeter_score = min(1.0, avg_edge_len / (typical_edge_length * 0.6))
+            
+            # Score 2: Compare to piece dimensions
+            # A corner edge should span a reasonable fraction of piece size
+            dimension_score = min(1.0, avg_edge_len / (piece_size_ref * 0.4))
+            
+            # Score 3: Ensure BOTH edges are reasonably long (not just average)
+            # The shorter edge must still be substantial
+            min_edge_score = min(1.0, min_edge_len / (typical_edge_length * 0.4))
+            
+            # Combined edge length score
+            # Prioritize: both edges long (40%) > average length (35%) > meets dimension threshold (25%)
+            edge_length_score = (
+                0.40 * min_edge_score +
+                0.35 * perimeter_score +
+                0.25 * dimension_score
+            )
+            
             # Calculate bisector angle - the direction the corner "points"
             # This is the angle that bisects the two edges forming the corner
             # Get unit vectors for both edges (pointing AWAY from corner)
@@ -418,12 +461,14 @@ class PieceAnalyzer:
             bisector_angle = bisector_angle % 360
             
             # Calculate overall quality score
-            # Prioritize: angle accuracy (40%) > straightness (40%) > distance (20%)
+            # PRIORITY: edge length (45%) > straightness (30%) > angle accuracy (15%) > distance (10%)
+            # Long straight edges are THE most reliable indicator of a puzzle corner
             straightness_avg = (edge1_straightness + edge2_straightness) / 2
             overall_score = (
-                0.4 * angle_score +
-                0.4 * straightness_avg +
-                0.2 * distance_score
+                0.45 * edge_length_score +
+                0.30 * straightness_avg +
+                0.15 * angle_score +
+                0.10 * distance_score
             )
             
             corner_quality = CornerQuality(
@@ -433,6 +478,7 @@ class PieceAnalyzer:
                 edge1_straightness=float(edge1_straightness),
                 edge2_straightness=float(edge2_straightness),
                 edge_lengths=(float(v1_len), float(v2_len)),  # Explicit tuple of 2 floats
+                edge_length_score=float(edge_length_score),  # NEW: edge length score
                 bisector_angle=float(bisector_angle),
                 overall_score=float(overall_score)
             )
@@ -530,6 +576,10 @@ class PieceAnalyzer:
             y_pos += 25
             text4 = f"Straight: {primary.edge1_straightness:.2f}, {primary.edge2_straightness:.2f}"
             cv2.putText(vis, text4, (10, y_pos), cv2.FONT_HERSHEY_SIMPLEX, 
+                    0.5, (0, 255, 255), 1)
+            y_pos += 25
+            text5 = f"Edges: {primary.edge_lengths[0]:.0f}px, {primary.edge_lengths[1]:.0f}px"
+            cv2.putText(vis, text5, (10, y_pos), cv2.FONT_HERSHEY_SIMPLEX, 
                     0.5, (0, 255, 255), 1)
         
         return vis

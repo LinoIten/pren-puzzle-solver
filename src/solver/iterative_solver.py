@@ -40,16 +40,17 @@ class IterativeSolver:
         self.corner_fitter = None  # Will be created with target
         self.all_guesses = []
         self.all_scores = []
-        
+    
     def solve_iteratively(self,
-                     piece_shapes: Dict[int, np.ndarray],
-                     piece_corner_info: Dict[int, PieceCornerInfo],
-                     target: np.ndarray,
-                     score_threshold: float = 230000.0,
-                     min_acceptable_score: float = 200000.0,
-                     max_corner_combos: int = 200) -> IterativeSolution:
+                 piece_shapes: Dict[int, np.ndarray],
+                 piece_corner_info: Dict[int, PieceCornerInfo],
+                 target: np.ndarray,
+                 score_threshold: float = 230000.0,
+                 min_acceptable_score: float = 50000.0,
+                 max_corner_combos: int = 1000) -> IterativeSolution:
         """
         Try different combinations of corners for each piece.
+        Uses adaptive parameters that become more aggressive over time.
         """
         print("\n🔄 Starting iterative solving...")
         
@@ -114,8 +115,60 @@ class IterativeSolver:
         last_best_score = -float('inf')
         combo_idx = 0
         
+        # ADAPTIVE PARAMETERS - start conservative, become aggressive
+        def get_adaptive_params(combo_idx, best_score, min_acceptable_score):
+            """Calculate parameters based on progress."""
+            
+            if combo_idx < 100:
+                num_guesses = 100 if best_score < min_acceptable_score else 50
+                patience = 30  # LOW patience - wrong corners are obviously wrong
+                check_interval = 50
+            
+            # Phase 2: Mid exploration (100-400 combos)
+            elif combo_idx < 400:
+                # Increase guesses if we're still far from target
+                if best_score < min_acceptable_score * 0.5:
+                    num_guesses = 300  # Really struggling, try more
+                elif best_score < min_acceptable_score:
+                    num_guesses = 150
+                else:
+                    num_guesses = 75
+                patience = 60  # Moderate patience
+                check_interval = 30
+            
+            # Phase 3: Deep search (400-4000 combos)
+            elif combo_idx < 4000:
+                if best_score < min_acceptable_score * 0.5:
+                    num_guesses = 400  # Still struggling badly
+                elif best_score < min_acceptable_score:
+                    num_guesses = 200
+                else:
+                    num_guesses = 50
+                patience = 100  # Higher patience - might be close
+                check_interval = 20
+            
+            # Phase 4: Desperate search (4000+ combos)
+            else:
+                if best_score < min_acceptable_score * 0.5:
+                    num_guesses = 500  # Maximum effort
+                elif best_score < min_acceptable_score:
+                    num_guesses = 250
+                else:
+                    num_guesses = 50
+                patience = 150  # HIGHEST patience - trying everything
+                check_interval = 10
+            
+            return num_guesses, patience, check_interval
+            
+            return num_guesses, patience, check_interval
+        
         for combo_idx, corner_indices in enumerate(all_corner_combinations):
+            # Get adaptive parameters
+            num_guesses, patience, check_interval = get_adaptive_params(
+                combo_idx, best_score, min_acceptable_score)
+            
             print(f"\n  === Combination {combo_idx + 1}/{len(all_corner_combinations)} ===")
+            print(f"  Adaptive params: {num_guesses} guesses, patience={patience}")
             
             # Calculate quality of this combination
             combo_qual = combo_quality(corner_indices)
@@ -142,13 +195,7 @@ class IterativeSolver:
                     piece_center=info.piece_center
                 )
             
-            # Generate MORE guesses per combo - more chances to get non-corner pieces right
-            # Increase attempts dramatically if we haven't reached minimum acceptable score
-            if best_score < min_acceptable_score:
-                num_guesses = 100 if combo_idx < 20 else 50
-            else:
-                num_guesses = 50 if combo_idx < 10 else 20
-            
+            # Generate guesses using adaptive count
             guesses = self._generate_guesses_with_all_corners(
                 piece_shapes,
                 modified_corner_info,
@@ -188,15 +235,11 @@ class IterativeSolver:
                 print(f"\n  🎉 Found solution exceeding threshold ({score_threshold})!")
                 break
             
-            # MORE LENIENT stopping conditions
-            # Only stop early if:
-            # 1. We've tried at least 50 combos
-            # 2. No improvement for 30 consecutive combos
-            # 3. AND we've reached at least the minimum acceptable score
+            # ADAPTIVE stopping conditions
             should_stop_early = (
-                combo_idx >= 50 and
-                no_improvement_count >= 30 and
-                best_score >= min_acceptable_score
+                combo_idx >= 50 and  # Minimum combos before considering stopping
+                no_improvement_count >= patience and  # Use adaptive patience
+                best_score >= min_acceptable_score  # Must meet minimum
             )
             
             if should_stop_early:
@@ -204,10 +247,14 @@ class IterativeSolver:
                 print(f"  No improvement for {no_improvement_count} combinations, stopping")
                 break
             
-            # Warn if we're stuck below minimum acceptable score
-            if combo_idx > 0 and combo_idx % 25 == 0 and best_score < min_acceptable_score:
-                print(f"\n  ⚠️  After {combo_idx} combos, best score is {best_score:.1f} (target: {min_acceptable_score:.1f})")
-                print(f"  Continuing search...")
+            # Periodic progress reports
+            if combo_idx > 0 and combo_idx % check_interval == 0:
+                if best_score < min_acceptable_score:
+                    progress_pct = (best_score / min_acceptable_score) * 100
+                    print(f"\n  📊 Progress at {combo_idx} combos:")
+                    print(f"     Best score: {best_score:.1f} ({progress_pct:.1f}% of target)")
+                    print(f"     No improvement streak: {no_improvement_count}")
+                    print(f"     Total guesses tried: {len(self.all_guesses)}")
         
         # Calculate final values
         total_combinations_tried = combo_idx + 1 if combo_idx >= 0 else 0

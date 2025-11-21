@@ -11,6 +11,7 @@ from typing import Optional
 import cv2
 
 from src.solver.piece_analyzer import PieceAnalyzer
+from src.ui.simulator.solver_visualizer import SolverVisualizerApp
 from .config import Config
 from ..utils.logger import setup_logger
 from ..solver.guess_generator import GuessGenerator 
@@ -281,8 +282,6 @@ class PuzzlePipeline:
     def _launch_ui(self, solution):
         """Launch Kivy UI to visualize the solution."""
         self.logger.info("🎬 Starte Visualisierung...")
-        
-        from ..ui.simulator.solver_visualizer import SolverVisualizerApp
         
         solver_data = {
             'guesses': solution['guesses'],

@@ -17,7 +17,7 @@ class MockPuzzleGenerator:
         self.a4_height = 594
         
         # Randomly choose 2 or 3 cuts if not specified
-        self.num_cuts = 2 #num_cuts if num_cuts is not None else random.choice([2, 3])
+        self.num_cuts = 2#num_cuts if num_cuts is not None else random.choice([2, 3])
         
         print(f"Generating puzzle with {self.num_cuts} cuts")
 
@@ -28,6 +28,7 @@ class MockPuzzleGenerator:
         Returns:
             (full_image, piece_images, debug_image)
         """
+        self.cleanup_old_pieces()
         # Create full A4 image (white paper)
         full_image = np.ones((self.a4_height, self.a4_width, 3), dtype=np.uint8) * 255
         
@@ -151,50 +152,25 @@ class MockPuzzleGenerator:
                 (end_x, end_y))
     
     def _generate_cut_between_points(self, start: tuple, end: tuple) -> np.ndarray:
-        """Generate a cut (wavy or sharp) between two points."""
-        cut_type = random.choice(['wavy', 'sharp'])
+        """Generate a cut (wavy, sharp zigzag, or square wave) between two points."""
+        cut_type = random.choice(['wavy', 'sharp', 'square'])
         
         if cut_type == 'wavy':
             return self.generate_wavy_cut(
                 start, end,
                 num_waves=random.randint(3, 6),
                 amplitude=random.randint(20, 40))
-        else:
+        elif cut_type == 'sharp':
             return self.generate_sharp_cut(
                 start, end,
                 num_angles=random.randint(4, 8),
                 amplitude=random.randint(30, 60))
+        else:  # square
+            return self.generate_square_cut(
+                start, end,
+                num_rectangles=random.randint(3, 6),
+                amplitude=random.randint(25, 50))
 
-    def _create_piece_masks_from_cuts(self, cuts: list) -> list:
-        """Create binary masks for each piece using actual cut lines."""
-        # Create a mask with all cuts drawn
-        cut_image = np.zeros((self.a4_height, self.a4_width), dtype=np.uint8)
-        
-        # Draw all cuts as barriers
-        for cut in cuts:
-            cv2.polylines(cut_image, [cut], False, 255, 3)
-        
-        # Invert so cuts are black (barriers)
-        cut_image = 255 - cut_image
-        
-        # Find all connected regions
-        num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(
-            cut_image, connectivity=8)
-        
-        # Create masks for each region (skip background label 0)
-        masks = []
-        for label in range(1, num_labels):
-            mask = (labels == label).astype(np.uint8) * 255
-            
-            # Only keep masks with sufficient area
-            area = stats[label, cv2.CC_STAT_AREA]
-            if area > 1000:  # Minimum piece size
-                masks.append(mask)
-        
-        print(f"Created {len(masks)} pieces from {len(cuts)} cuts")
-        
-        return masks
-    
     def generate_wavy_cut(self, 
                           start: tuple, 
                           end: tuple, 
@@ -305,6 +281,87 @@ class MockPuzzleGenerator:
         # Convert to numpy array
         return np.array(points, dtype=np.int32)
     
+    def generate_square_cut(self,
+                            start: tuple,
+                            end: tuple,
+                            num_rectangles: int = 4,
+                            amplitude: int = 35) -> np.ndarray:
+        """
+        Generate a square wave cut line (like a digital signal 0/1).
+        Creates rectangular protrusions that stick out from the line.
+        
+        Args:
+            start: (x, y) starting point
+            end: (x, y) ending point
+            num_rectangles: Number of rectangular bumps
+            amplitude: How far rectangles stick out from the line
+            
+        Returns:
+            Array of points forming the cut line
+        """
+        x1, y1 = start
+        x2, y2 = end
+        
+        # Calculate direction vectors
+        dx = x2 - x1
+        dy = y2 - y1
+        length = np.sqrt(dx**2 + dy**2)
+        
+        if length > 0:
+            # Unit vectors along and perpendicular to the line
+            dir_x = dx / length
+            dir_y = dy / length
+            perp_x = -dy / length
+            perp_y = dx / length
+        else:
+            return np.array([start, end], dtype=np.int32)
+        
+        points = []
+        
+        # Width of each rectangle segment along the line
+        segment_length = length / (num_rectangles * 2)
+        
+        current_pos = 0
+        rectangle_index = 0
+        
+        # Start at the beginning
+        points.append(start)
+        
+        while current_pos < length - segment_length:
+            # Determine which side this rectangle should be on
+            side = 1 if rectangle_index % 2 == 0 else -1
+            
+            # Calculate current position on baseline
+            base_x = x1 + dir_x * current_pos
+            base_y = y1 + dir_y * current_pos
+            
+            # Move to next position on baseline
+            next_pos = current_pos + segment_length
+            next_x = x1 + dir_x * next_pos
+            next_y = y1 + dir_y * next_pos
+            
+            # Calculate offset perpendicular to line
+            offset_x = side * amplitude * perp_x
+            offset_y = side * amplitude * perp_y
+            
+            # Create rectangle with 90-degree corners:
+            # 1. Go perpendicular OUT from baseline
+            points.append((int(base_x + offset_x), int(base_y + offset_y)))
+            
+            # 2. Move along the offset line (parallel to baseline)
+            points.append((int(next_x + offset_x), int(next_y + offset_y)))
+            
+            # 3. Go perpendicular back IN to baseline
+            points.append((int(next_x), int(next_y)))
+            
+            current_pos = next_pos
+            rectangle_index += 1
+        
+        # End at the end point
+        points.append(end)
+        
+        return np.array(points, dtype=np.int32)
+    
     def save_pieces(self, piece_images: list) -> list:
         """Save piece images to disk with random rotations and return file paths."""
         saved_paths = []
@@ -389,3 +446,68 @@ class MockPuzzleGenerator:
             piece_ids.append(i)
         
         return piece_ids, piece_shapes
+    
+    def _create_piece_masks_from_cuts(self, cuts: list) -> list:
+        """Create binary masks for each piece using actual cut lines."""
+        # Create a mask with all cuts drawn
+        cut_image = np.zeros((self.a4_height, self.a4_width), dtype=np.uint8)
+        
+        # Draw all cuts as barriers with THICKER lines to ensure separation
+        for cut in cuts:
+            cv2.polylines(cut_image, [cut], False, 255, 6) 
+        
+        # Invert so cuts are black (barriers)
+        cut_image = 255 - cut_image
+        
+        # Optional: Apply morphological closing to ensure cuts are fully connected
+        kernel = np.ones((5, 5), np.uint8)
+        cut_image = cv2.morphologyEx(cut_image, cv2.MORPH_CLOSE, kernel)
+        
+        # Find all connected regions
+        num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(
+            cut_image, connectivity=8)
+        
+        # Create masks for each region (skip background label 0)
+        masks = []
+        
+        # Calculate expected minimum area (should be roughly total_area / expected_pieces)
+        total_area = self.a4_height * self.a4_width
+        expected_pieces = self.num_cuts + 1  # 2 cuts = 3 pieces, 3 cuts = 4 pieces
+        min_area_threshold = (total_area / expected_pieces) * 0.3  # At least 30% of expected size
+        
+        print(f"\nDEBUG: Found {num_labels - 1} regions")
+        
+        for label in range(1, num_labels):
+            area = stats[label, cv2.CC_STAT_AREA]
+            print(f"  Region {label}: area = {area}, min_threshold = {min_area_threshold:.0f}")
+            
+            # Only keep masks with sufficient area
+            if area > min_area_threshold:
+                mask = (labels == label).astype(np.uint8) * 255
+                masks.append(mask)
+                print(f"    ✓ Kept region {label}")
+            else:
+                print(f"    ✗ Rejected region {label} (too small)")
+        
+        print(f"\nCreated {len(masks)} pieces from {self.num_cuts} cuts (expected {expected_pieces})")
+        
+        # Add assertion to catch unexpected piece counts
+        if len(masks) != expected_pieces:
+            print(f"⚠️  WARNING: Expected {expected_pieces} pieces but got {len(masks)}!")
+            
+            # Save debug image to see what's happening
+            debug_path = self.output_dir / "debug_cut_regions.png"
+            debug_img = cv2.cvtColor(cut_image, cv2.COLOR_GRAY2BGR)
+            for i in range(1, num_labels):
+                color = np.random.randint(0, 255, 3).tolist()
+                debug_img[labels == i] = color
+            cv2.imwrite(str(debug_path), debug_img)
+            print(f"  Saved debug image to {debug_path}")
+        
+        return masks
+
+    def cleanup_old_pieces(self):
+        """Remove all existing piece files before generating new puzzle."""
+        for old_piece in self.output_dir.glob("piece_*.png"):
+            old_piece.unlink()
+            print(f"Removed old piece: {old_piece.name}")
