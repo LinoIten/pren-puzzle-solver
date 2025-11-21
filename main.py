@@ -16,6 +16,8 @@ from src.core.config import Config
 from src.utils.logger import setup_logger
 
 def main():
+
+    
     # Logger initialisieren
     logger = setup_logger("main")
     logger.info("=" * 60)
@@ -23,13 +25,9 @@ def main():
     logger.info("=" * 60)
     
     try:
-        # Konfiguration laden
+
         config = Config()
-        
-        # Pipeline erstellen
-        pipeline = PuzzlePipeline(config)
-        
-        # Pipeline ausführen
+        pipeline = PuzzlePipeline(config, show_ui=True)  # Enable UI
         result = pipeline.run()
         
         if result.success:
