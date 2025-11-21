@@ -9,16 +9,21 @@ import random
 class MockPuzzleGenerator:
     """Generate realistic mock puzzle pieces for testing."""
     
-    def __init__(self, output_dir: str = "data/mock_pieces"):
+    def __init__(self, output_dir: str = "data/mock_pieces", num_cuts: int | None = None):
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         
         self.a4_width = 420  # Half scale
         self.a4_height = 594
+        
+        # Randomly choose 2 or 3 cuts if not specified
+        self.num_cuts = 2 #num_cuts if num_cuts is not None else random.choice([2, 3])
+        
+        print(f"Generating puzzle with {self.num_cuts} cuts")
 
     def generate_puzzle(self) -> tuple:
         """
-        Generate a 4-piece puzzle with slanted wavy cuts.
+        Generate a puzzle with 2-3 cuts (wavy or sharp).
         
         Returns:
             (full_image, piece_images, debug_image)
@@ -30,40 +35,57 @@ class MockPuzzleGenerator:
         noise = np.random.randint(-10, 10, (self.a4_height, self.a4_width, 3), dtype=np.int16)
         full_image = np.clip(full_image.astype(np.int16) + noise, 0, 255).astype(np.uint8)
         
-        # Define cut positions with randomness AND rotation
-        center_x = self.a4_width // 2 + random.randint(-30, 30)
-        center_y = self.a4_height // 2 + random.randint(-30, 30)
+        # Generate cuts
+        cuts = []
+        colors = [(255, 0, 0), (0, 0, 255), (0, 255, 0)]  # Red, Blue, Green
         
-        # Add rotation angles for slanted cuts (in degrees)
-        vertical_angle = random.randint(-15, 15)  # Slant the "vertical" cut
-        horizontal_angle = random.randint(-15, 15)  # Slant the "horizontal" cut
-        
-        # Generate vertical cut (with slant)
-        # Instead of perfectly vertical, make it angled
-        offset_top = int(np.tan(np.radians(vertical_angle)) * self.a4_height / 2)
-        vertical_cut = self.generate_wavy_cut(
-            (center_x - offset_top, 0),
-            (center_x + offset_top, self.a4_height),
-            num_waves=4,
-            amplitude=random.randint(20, 40)
-        )
-        
-        # Generate horizontal cut (with slant)
-        offset_left = int(np.tan(np.radians(horizontal_angle)) * self.a4_width / 2)
-        horizontal_cut = self.generate_wavy_cut(
-            (0, center_y - offset_left),
-            (self.a4_width, center_y + offset_left),
-            num_waves=4,
-            amplitude=random.randint(20, 40)
-        )
+        if self.num_cuts == 2:
+            # Generate two cuts (can be vertical/horizontal or diagonal)
+            cuts.append(self._generate_random_cut(orientation='vertical'))
+            cuts.append(self._generate_random_cut(orientation='horizontal'))
+        else:  # 3 cuts
+            # For 3 cuts, we can do various configurations
+            # Option 1: Two verticals, one horizontal
+            # Option 2: Two horizontals, one vertical
+            # Option 3: One vertical, one horizontal, one diagonal
+            
+            config = random.choice(['vvh', 'vhh', 'vhd'])
+            
+            if config == 'vvh':
+                # Two vertical cuts dividing into thirds, one horizontal
+                left_x = self.a4_width // 3 + random.randint(-20, 20)
+                right_x = 2 * self.a4_width // 3 + random.randint(-20, 20)
+                
+                cuts.append(self._generate_cut_between_points(
+                    (left_x, 0), (left_x, self.a4_height)))
+                cuts.append(self._generate_cut_between_points(
+                    (right_x, 0), (right_x, self.a4_height)))
+                cuts.append(self._generate_random_cut(orientation='horizontal'))
+                
+            elif config == 'vhh':
+                # Two horizontal cuts dividing into thirds, one vertical
+                top_y = self.a4_height // 3 + random.randint(-20, 20)
+                bottom_y = 2 * self.a4_height // 3 + random.randint(-20, 20)
+                
+                cuts.append(self._generate_random_cut(orientation='vertical'))
+                cuts.append(self._generate_cut_between_points(
+                    (0, top_y), (self.a4_width, top_y)))
+                cuts.append(self._generate_cut_between_points(
+                    (0, bottom_y), (self.a4_width, bottom_y)))
+                
+            else:  # vhd
+                # One vertical, one horizontal, one diagonal
+                cuts.append(self._generate_random_cut(orientation='vertical'))
+                cuts.append(self._generate_random_cut(orientation='horizontal'))
+                cuts.append(self._generate_random_cut(orientation='diagonal'))
         
         # Draw cuts on image for visualization
         debug_image = full_image.copy()
-        cv2.polylines(debug_image, [vertical_cut], False, (255, 0, 0), 3)
-        cv2.polylines(debug_image, [horizontal_cut], False, (0, 0, 255), 3)
+        for i, cut in enumerate(cuts):
+            cv2.polylines(debug_image, [cut], False, colors[i], 3)
         
         # Create masks for each piece using the actual cut lines
-        piece_masks = self._create_piece_masks_from_cuts(vertical_cut, horizontal_cut)
+        piece_masks = self._create_piece_masks_from_cuts(cuts)
         
         # Extract individual pieces
         piece_images = []
@@ -97,53 +119,87 @@ class MockPuzzleGenerator:
         
         return full_image, piece_images, debug_image
 
-    def _create_piece_masks_from_cuts(self, vertical_cut: np.ndarray, horizontal_cut: np.ndarray) -> list:
-        """Create binary masks for each of the 4 pieces using actual cut lines."""
-        masks = []
+    def _generate_random_cut(self, orientation='vertical') -> np.ndarray:
+        """Generate a random cut with specified orientation."""
+        if orientation == 'vertical':
+            center_x = self.a4_width // 2 + random.randint(-30, 30)
+            angle = random.randint(-15, 15)
+            offset = int(np.tan(np.radians(angle)) * self.a4_height / 2)
+            
+            return self._generate_cut_between_points(
+                (center_x - offset, 0),
+                (center_x + offset, self.a4_height))
+                
+        elif orientation == 'horizontal':
+            center_y = self.a4_height // 2 + random.randint(-30, 30)
+            angle = random.randint(-15, 15)
+            offset = int(np.tan(np.radians(angle)) * self.a4_width / 2)
+            
+            return self._generate_cut_between_points(
+                (0, center_y - offset),
+                (self.a4_width, center_y + offset))
+                
+        else:  # diagonal
+            # Diagonal from one corner area to opposite corner area
+            start_x = random.randint(0, self.a4_width // 4)
+            start_y = random.randint(0, self.a4_height // 4)
+            end_x = random.randint(3 * self.a4_width // 4, self.a4_width)
+            end_y = random.randint(3 * self.a4_height // 4, self.a4_height)
+            
+            return self._generate_cut_between_points(
+                (start_x, start_y),
+                (end_x, end_y))
+    
+    def _generate_cut_between_points(self, start: tuple, end: tuple) -> np.ndarray:
+        """Generate a cut (wavy or sharp) between two points."""
+        cut_type = random.choice(['wavy', 'sharp'])
         
-        # Create a mask for each quadrant by flood filling
-        # First, draw the cuts on a temporary image
+        if cut_type == 'wavy':
+            return self.generate_wavy_cut(
+                start, end,
+                num_waves=random.randint(3, 6),
+                amplitude=random.randint(20, 40))
+        else:
+            return self.generate_sharp_cut(
+                start, end,
+                num_angles=random.randint(4, 8),
+                amplitude=random.randint(30, 60))
+
+    def _create_piece_masks_from_cuts(self, cuts: list) -> list:
+        """Create binary masks for each piece using actual cut lines."""
+        # Create a mask with all cuts drawn
         cut_image = np.zeros((self.a4_height, self.a4_width), dtype=np.uint8)
         
-        # Draw cuts as lines
-        cv2.polylines(cut_image, [vertical_cut], False, 255, 2)
-        cv2.polylines(cut_image, [horizontal_cut], False, 255, 2)
+        # Draw all cuts as barriers
+        for cut in cuts:
+            cv2.polylines(cut_image, [cut], False, 255, 3)
         
         # Invert so cuts are black (barriers)
         cut_image = 255 - cut_image
         
-        # Find seed points for each quadrant (far from cuts)
-        center_x = self.a4_width // 2
-        center_y = self.a4_height // 2
+        # Find all connected regions
+        num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(
+            cut_image, connectivity=8)
         
-        # Seed points for 4 quadrants (offset from center to avoid cuts)
-        seed_points = [
-            (center_x // 2, center_y // 2),  # Top-left
-            (center_x + center_x // 2, center_y // 2),  # Top-right
-            (center_x // 2, center_y + center_y // 2),  # Bottom-left
-            (center_x + center_x // 2, center_y + center_y // 2),  # Bottom-right
-        ]
+        # Create masks for each region (skip background label 0)
+        masks = []
+        for label in range(1, num_labels):
+            mask = (labels == label).astype(np.uint8) * 255
+            
+            # Only keep masks with sufficient area
+            area = stats[label, cv2.CC_STAT_AREA]
+            if area > 1000:  # Minimum piece size
+                masks.append(mask)
         
-        for seed in seed_points:
-            # Create mask for this piece using flood fill
-            mask = np.zeros((self.a4_height + 2, self.a4_width + 2), dtype=np.uint8)
-            temp_image = cut_image.copy()
-            
-            # Flood fill from seed point
-            cv2.floodFill(temp_image, mask, seed, 128)
-            
-            # Extract the filled region
-            piece_mask = (temp_image == 128).astype(np.uint8) * 255
-            
-            masks.append(piece_mask)
+        print(f"Created {len(masks)} pieces from {len(cuts)} cuts")
         
         return masks
     
     def generate_wavy_cut(self, 
-                         start: tuple, 
-                         end: tuple, 
-                         num_waves: int = 3,
-                         amplitude: int = 30) -> np.ndarray:
+                          start: tuple, 
+                          end: tuple, 
+                          num_waves: int = 3,
+                          amplitude: int = 30) -> np.ndarray:
         """
         Generate a wavy cut line between two points.
         
@@ -192,54 +248,62 @@ class MockPuzzleGenerator:
         
         return points
     
-    def _create_piece_masks(self, vertical_cut: np.ndarray, horizontal_cut: np.ndarray) -> list:
-        """Create binary masks for each of the 4 pieces."""
-        masks = []
+    def generate_sharp_cut(self,
+                           start: tuple,
+                           end: tuple,
+                           num_angles: int = 5,
+                           amplitude: int = 40) -> np.ndarray:
+        """
+        Generate a sharp zigzag cut line between two points.
         
-        # Create mask for each quadrant
-        # Piece 0: Top-left
-        mask0 = np.zeros((self.a4_height, self.a4_width), dtype=np.uint8)
-        
-        # Fill region to the left of vertical cut and above horizontal cut
-        for y in range(self.a4_height):
-            # Find x position of vertical cut at this y
-            vert_indices = np.where(vertical_cut[:, 1] == y)[0]
-            if len(vert_indices) > 0:
-                x_vert = vertical_cut[vert_indices[0], 0]
-            else:
-                x_vert = self.a4_width // 2
+        Args:
+            start: (x, y) starting point
+            end: (x, y) ending point
+            num_angles: Number of sharp angles/zigzags
+            amplitude: How far each angle deviates from straight line
             
-            # Find y position of horizontal cut
-            horiz_indices = np.where(horizontal_cut[:, 1] == y)[0]
-            if len(horiz_indices) > 0:
-                # Only fill if we're above the horizontal cut
-                if y < self.a4_height // 2:
-                    mask0[y, :x_vert] = 255
+        Returns:
+            Array of points forming the cut line
+        """
+        x1, y1 = start
+        x2, y2 = end
         
-        # Simpler approach: divide into quadrants
-        # This is a simplified version - you can make it more sophisticated
-        center_x = self.a4_width // 2
-        center_y = self.a4_height // 2
+        # Calculate perpendicular direction
+        dx = x2 - x1
+        dy = y2 - y1
+        length = np.sqrt(dx**2 + dy**2)
         
-        # Top-left
-        mask0 = np.zeros((self.a4_height, self.a4_width), dtype=np.uint8)
-        mask0[:center_y, :center_x] = 255
+        if length > 0:
+            perp_x = -dy / length
+            perp_y = dx / length
+        else:
+            perp_x, perp_y = 0, 0
         
-        # Top-right
-        mask1 = np.zeros((self.a4_height, self.a4_width), dtype=np.uint8)
-        mask1[:center_y, center_x:] = 255
+        # Generate points along the line
+        points = [start]
         
-        # Bottom-left
-        mask2 = np.zeros((self.a4_height, self.a4_width), dtype=np.uint8)
-        mask2[center_y:, :center_x] = 255
+        for i in range(1, num_angles + 1):
+            # Position along the line
+            t = i / (num_angles + 1)
+            base_x = x1 + (x2 - x1) * t
+            base_y = y1 + (y2 - y1) * t
+            
+            # Alternate sides for zigzag effect
+            side = 1 if i % 2 == 0 else -1
+            
+            # Random amplitude variation for each angle
+            current_amp = amplitude * random.uniform(0.7, 1.3)
+            
+            # Add perpendicular offset
+            point_x = int(base_x + side * current_amp * perp_x)
+            point_y = int(base_y + side * current_amp * perp_y)
+            
+            points.append((point_x, point_y))
         
-        # Bottom-right
-        mask3 = np.zeros((self.a4_height, self.a4_width), dtype=np.uint8)
-        mask3[center_y:, center_x:] = 255
+        points.append(end)
         
-        masks = [mask0, mask1, mask2, mask3]
-        
-        return masks
+        # Convert to numpy array
+        return np.array(points, dtype=np.int32)
     
     def save_pieces(self, piece_images: list) -> list:
         """Save piece images to disk with random rotations and return file paths."""
@@ -271,7 +335,7 @@ class MockPuzzleGenerator:
             
             # Rotate image and mask
             rotated_image = cv2.warpAffine(image, M, (new_w, new_h), 
-                                        borderValue=(255, 255, 255))
+                                           borderValue=(255, 255, 255))
             rotated_mask = cv2.warpAffine(mask, M, (new_w, new_h))
             
             # Create RGBA image
