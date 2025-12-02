@@ -11,6 +11,7 @@ from typing import Optional
 import cv2
 
 from src.solver.piece_analyzer import PieceAnalyzer
+from src.solver.movement_analyzer import calculate_movement_data_for_visualizer
 from src.ui.simulator.solver_visualizer import SolverVisualizerApp
 from .config import Config
 from ..utils.logger import setup_logger
@@ -513,25 +514,36 @@ class PuzzlePipeline:
         # TODO: Implementierung in PREN2
         pass
     
+
     def _launch_ui(self, solution):
         """Launch Kivy UI to visualize the solution."""
         self.logger.info("🎬 Starte Visualisierung...")
+        
+        # Calculate movement data for best solution
+        movement_data = None
+        if solution.get('puzzle_pieces') and solution.get('best_guess'):
+            movement_data = calculate_movement_data_for_visualizer(solution)
         
         solver_data = {
             'guesses': solution['guesses'],
             'piece_shapes': solution['piece_shapes'],
             'target': solution['target'],
             'source': solution['source'],
-            'surfaces': solution['surfaces'],    
+            'surfaces': solution['surfaces'],        
             'initial_placements': solution['initial_placements'],
             'best_score': solution['best_score'],
             'best_guess': solution.get('best_guess'),
             'best_guess_index': solution.get('best_guess_index', 0),
             'renderer': solution['renderer'],
-            'puzzle_pieces': solution['puzzle_pieces']  
+            'puzzle_pieces': solution['puzzle_pieces'],
+            'movement_data': movement_data  # ADD: Pre-calculated movement data
         }
         
         self.logger.info(f"  → Passing {len(solution['guesses'])} guesses to visualizer")
+        if movement_data:
+            num_movements = len(movement_data.get('movements', {}))
+            self.logger.info(f"  → Calculated movement data for {num_movements} pieces")
         
         app = SolverVisualizerApp(solver_data)
         app.run()
+

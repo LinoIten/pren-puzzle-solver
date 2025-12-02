@@ -10,39 +10,19 @@ from kivy.clock import Clock
 import numpy as np
 import cv2
 
+from ...solver.validation.scorer import PlacementScorer
+
 class SolverVisualizer(BoxLayout):
     def __init__(self, solver_data, **kwargs):
         super().__init__(**kwargs)
-        
-        # DEBUG: Check what data we have
-        print("\n=== SOLVER VISUALIZER DEBUG ===")
-        print("Available keys in solver_data:")
-        for key in solver_data.keys():
-            print(f"  - {key}: {type(solver_data[key])}")
-        
-        if 'puzzle_pieces' in solver_data:
-            pieces = solver_data['puzzle_pieces']
-            print(f"\nPuzzle pieces found: {len(pieces)} pieces")
-            for piece in pieces[:2]:  # Show first 2
-                print(f"  Piece {piece.id}: pick_pose={piece.pick_pose}")
-        else:
-            print("\n❌ NO puzzle_pieces in solver_data!")
-        
-        if 'surfaces' in solver_data:
-            surfaces = solver_data['surfaces']
-            print(f"\nSurfaces found: {surfaces['global']['width']}x{surfaces['global']['height']}")
-        else:
-            print("\n❌ NO surfaces in solver_data!")
-        
-        print("===============================\n")
         
         self.orientation = 'vertical'
         self.solver_data = solver_data
         self.current_guess_index = 0
         self.is_running = False
         self.speed = 0.05  # seconds per guess
+        self.show_movements = False 
         
-        # Set background color to light grey
         with self.canvas.before:
             Color(0.9, 0.9, 0.9, 1)  # Light grey background
             self.bg = Rectangle(size=self.size, pos=self.pos)
@@ -129,6 +109,16 @@ class SolverVisualizer(BoxLayout):
         )
         self.best_button.bind(on_press=self.show_best)
         button_row1.add_widget(self.best_button)
+
+        self.show_movement_button = Button(
+            text='Movement', 
+            background_color=(0.2, 0.6, 0.8, 1),
+            color=(1, 1, 1, 1), 
+            font_size='14sp', 
+            bold=True
+        )
+        self.show_movement_button.bind(on_press=self.toggle_movement_view)
+        button_row1.add_widget(self.show_movement_button)
         
         controls.add_widget(button_row1)
         
@@ -169,7 +159,6 @@ class SolverVisualizer(BoxLayout):
         if 0 <= guess_index < len(self.solver_data['guesses']):
             guess = self.solver_data['guesses'][guess_index]
             
-            from ...solver.validation.scorer import PlacementScorer
             
             renderer = self.solver_data['renderer']
             scorer = PlacementScorer(overlap_penalty=2.0, coverage_reward=1.0, gap_penalty=0.5)
@@ -202,36 +191,27 @@ class SolverVisualizer(BoxLayout):
         if self.current_guess_index < len(self.solver_data['guesses']):
             guess = self.solver_data['guesses'][self.current_guess_index]
             
-            from ...solver.validation.scorer import PlacementScorer
-            
-            # Use the renderer passed from pipeline
             renderer = self.solver_data['renderer']
             scorer = PlacementScorer(overlap_penalty=2.0, coverage_reward=1.0, gap_penalty=0.5)
             
-            # Render grayscale for scoring
             rendered = renderer.render(guess, self.solver_data['piece_shapes'])
             score = scorer.score(rendered, self.solver_data['target'])
             
-            # Render in DEBUG mode to show bounding boxes
             rendered_color = renderer.render_debug(guess, self.solver_data['piece_shapes'])
             
-            # Create side-by-side visualization with original positions
             if 'puzzle_pieces' in self.solver_data and 'surfaces' in self.solver_data:
-                print(f" Using enhanced visualization for guess {self.current_guess_index + 1}")
                 display = self._create_source_target_visualization(
                     rendered_color, 
                     self.solver_data['puzzle_pieces'],
                     self.solver_data['surfaces']
                 )
             else:
-                print(f"⚠️  Using fallback visualization for guess {self.current_guess_index + 1}")
                 display = self._create_visualization(rendered_color, self.solver_data['target'])
-            
-            # Update display
+        
             self._update_image(display)
             
             is_best = score >= self.solver_data['best_score']
-            best_marker = " ⭐ NEW BEST!" if is_best else ""
+            best_marker = " NEW BEST!" if is_best else ""
             
             self.status_label.text = (
                 f'Guess {self.current_guess_index + 1}/{len(self.solver_data["guesses"])} | '
@@ -261,7 +241,6 @@ class SolverVisualizer(BoxLayout):
         
         # Create side-by-side visualization
         if 'puzzle_pieces' in self.solver_data and 'surfaces' in self.solver_data:
-            print("🎨 Using enhanced visualization for BEST solution")
             display = self._create_source_target_visualization(
                 rendered_color,
                 self.solver_data['puzzle_pieces'], 
@@ -286,7 +265,6 @@ class SolverVisualizer(BoxLayout):
     def _show_initial_state(self):
         """Show initial state with original positions and empty target."""
         if 'puzzle_pieces' in self.solver_data and 'surfaces' in self.solver_data:
-            print("🎨 Using enhanced initial state visualization")
             # Create empty guess for target area
             empty_guess = []
             
@@ -315,121 +293,76 @@ class SolverVisualizer(BoxLayout):
         
         self._update_image(display)
         self.status_label.text = f'Initial State | {len(self.solver_data["guesses"])} guesses to test'
-    
-    def _create_source_target_visualization(self, rendered_color, puzzle_pieces, surfaces):
-        """Create side-by-side visualization showing original positions and current guess."""
-        print(f"📐 Creating source+target visualization...")
-        print(f"   Global: {surfaces['global']['width']}x{surfaces['global']['height']}")
-        print(f"   Pieces: {len(puzzle_pieces)}")
         
-        # Get global surface dimensions
+    def _create_source_target_visualization(self, rendered_color, puzzle_pieces, surfaces, show_movements=None):
+        """Create side-by-side visualization with optional COM dots."""
+        # Use instance variable if not specified
+        if show_movements is None:
+            show_movements = getattr(self, 'show_movements', False)
+        
+        print(f"📐 Creating visualization (movements: {show_movements})...")
+        
         global_width = surfaces['global']['width']
         global_height = surfaces['global']['height']
+        canvas = np.full((global_height, global_width, 3), 200, dtype=np.uint8)
         
-        # Create global canvas with light grey background
-        canvas = np.full((global_height, global_width, 3), 200, dtype=np.uint8)  # Light grey background
-        
-        # Get surface offsets
         source_offset_x = surfaces['source']['offset_x']
         source_offset_y = surfaces['source']['offset_y']
         target_offset_x = surfaces['target']['offset_x']  
         target_offset_y = surfaces['target']['offset_y']
         
-        # Fill source and target areas with white background
-        source_w = surfaces['source']['width']
-        source_h = surfaces['source']['height']
-        canvas[source_offset_y:source_offset_y + source_h,
-               source_offset_x:source_offset_x + source_w] = [255, 255, 255]  # White
+        # Fill areas white, draw borders
+        source_w, source_h = surfaces['source']['width'], surfaces['source']['height']
+        target_w, target_h = surfaces['target']['width'], surfaces['target']['height']
         
-        target_w = surfaces['target']['width'] 
-        target_h = surfaces['target']['height']
-        canvas[target_offset_y:target_offset_y + target_h,
-               target_offset_x:target_offset_x + target_w] = [255, 255, 255]  # White
+        canvas[source_offset_y:source_offset_y + source_h, source_offset_x:source_offset_x + source_w] = [255, 255, 255]
+        canvas[target_offset_y:target_offset_y + target_h, target_offset_x:target_offset_x + target_w] = [255, 255, 255]
         
-        # Draw source area boundary (A5) 
-        cv2.rectangle(canvas,
-                     (source_offset_x, source_offset_y),
-                     (source_offset_x + source_w - 1, source_offset_y + source_h - 1),
-                     (0, 200, 0), 4)  # Green border (thicker)
+        cv2.rectangle(canvas, (source_offset_x, source_offset_y), (source_offset_x + source_w - 1, source_offset_y + source_h - 1), (0, 200, 0), 4)
+        cv2.rectangle(canvas, (target_offset_x, target_offset_y), (target_offset_x + target_w - 1, target_offset_y + target_h - 1), (0, 150, 255), 4)
         
-        # Draw target area boundary (A4)
-        cv2.rectangle(canvas,
-                     (target_offset_x, target_offset_y),
-                     (target_offset_x + target_w - 1, target_offset_y + target_h - 1),
-                     (0, 150, 255), 4)  # Orange border (thicker)
+        piece_colors = [(255, 100, 100), (100, 255, 100), (100, 100, 255), (255, 255, 100), (255, 100, 255), (100, 255, 255)]
         
-        # Define piece colors (same as renderer)
-        piece_colors = [
-            (255, 100, 100),  # Blue-ish
-            (100, 255, 100),  # Green-ish  
-            (100, 100, 255),  # Red-ish
-            (255, 255, 100),  # Cyan-ish
-            (255, 100, 255),  # Magenta-ish
-            (100, 255, 255),  # Yellow-ish
-        ]
-        
-        # Render original positions (pick_pose) in source area
-        print(f"   Rendering {len(puzzle_pieces)} original positions...")
+        # Render original positions in source area
         for piece in puzzle_pieces:
             piece_id = int(piece.id)
-            x = int(piece.pick_pose.x) + source_offset_x  # Convert to global coords
+            x = int(piece.pick_pose.x) + source_offset_x
             y = int(piece.pick_pose.y) + source_offset_y
-            theta = piece.pick_pose.theta
-            
-            print(f"     Piece {piece_id}: ({piece.pick_pose.x}, {piece.pick_pose.y}) -> global ({x}, {y})")
             
             if piece_id in self.solver_data['piece_shapes']:
                 shape = self.solver_data['piece_shapes'][piece_id]
-                rotated = self._rotate_shape(shape, theta)
+                rotated = self._rotate_shape(shape, piece.pick_pose.theta)
                 color = piece_colors[piece_id % len(piece_colors)]
-                
-                # Make original positions semi-transparent
                 faded_color = tuple(int(c * 0.7) for c in color)
-                self._place_shape_color_global(canvas, rotated, x, y, faded_color)
                 
-                # Add piece label
-                cv2.putText(canvas, f"P{piece_id}", (x + 5, y + 15),
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
-                cv2.putText(canvas, f"P{piece_id}", (x + 5, y + 15),
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 1)
+                self._place_shape_color_global(canvas, rotated, x, y, faded_color)
+                cv2.putText(canvas, f"P{piece_id}", (x + 5, y + 15), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+                cv2.putText(canvas, f"P{piece_id}", (x + 5, y + 15), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 1)
         
-        # Overlay the rendered target area (current guess) 
-        target_region = canvas[target_offset_y:target_offset_y + target_h,
-                              target_offset_x:target_offset_x + target_w]
-        
-        # Blend the rendered_color into target region
+        # Overlay target area
+        target_region = canvas[target_offset_y:target_offset_y + target_h, target_offset_x:target_offset_x + target_w]
         if rendered_color.shape[:2] == target_region.shape[:2]:
-            # Where rendered_color has content, use it; otherwise keep canvas
             mask = np.any(rendered_color > 0, axis=2)
             target_region[mask] = rendered_color[mask]
-            print(f"   Blended target area: {np.sum(mask)} pixels")
-        else:
-            print(f"   ⚠️  Size mismatch: rendered {rendered_color.shape[:2]} vs target {target_region.shape[:2]}")
         
-        # Add area labels with better styling
-        cv2.putText(canvas, "A5 SOURCE (Original Positions)", 
-                   (source_offset_x + 15, source_offset_y + 35),
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 255, 255), 3)
-        cv2.putText(canvas, "A5 SOURCE (Original Positions)", 
-                   (source_offset_x + 15, source_offset_y + 35),
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 150, 0), 2)
+        # Add COM dots if requested
+        if show_movements and 'movement_data' in self.solver_data:
+            canvas = self._add_com_dots(canvas)
         
-        cv2.putText(canvas, "A4 TARGET (Current Guess)",
-                   (target_offset_x + 15, target_offset_y + 35), 
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 255, 255), 3)
-        cv2.putText(canvas, "A4 TARGET (Current Guess)",
-                   (target_offset_x + 15, target_offset_y + 35), 
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 100, 200), 2)
+        # Area labels
+        cv2.putText(canvas, "A5 SOURCE (Original)", (source_offset_x + 15, source_offset_y + 35), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 255, 255), 3)
+        cv2.putText(canvas, "A5 SOURCE (Original)", (source_offset_x + 15, source_offset_y + 35), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 150, 0), 2)
+        cv2.putText(canvas, "A4 TARGET (Current)", (target_offset_x + 15, target_offset_y + 35), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 255, 255), 3)
+        cv2.putText(canvas, "A4 TARGET (Current)", (target_offset_x + 15, target_offset_y + 35), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 100, 200), 2)
         
-        # Add subtle grid to both areas
+        # Grid
         for i in range(0, global_height, 100):
             cv2.line(canvas, (0, i), (global_width, i), (180, 180, 180), 1)
         for i in range(0, global_width, 100):
             cv2.line(canvas, (i, 0), (i, global_height), (180, 180, 180), 1)
         
-        print(f"   ✅ Created enhanced visualization: {canvas.shape}")
         return canvas
-    
+        
     def _rotate_shape(self, shape: np.ndarray, angle: float) -> np.ndarray:
         """Rotate a shape by angle degrees and crop to tight bounding box."""
         if angle == 0:
@@ -537,11 +470,81 @@ class SolverVisualizer(BoxLayout):
         
         self.image_widget.texture = texture
 
+    def _add_com_dots(self, canvas):
+        """Add COM dots to existing canvas."""
+        movement_data = self.solver_data['movement_data']
+        source_coms = movement_data.get('source_coms', {})
+        target_coms = movement_data.get('target_coms', {})
+        movements = movement_data.get('movements', {})
+        
+        for piece_id in source_coms:
+            source_com = source_coms[piece_id]
+            
+            # Source COM (yellow)
+            cv2.circle(canvas, (int(source_com[0]), int(source_com[1])), 8, (0, 0, 0), -1)
+            cv2.circle(canvas, (int(source_com[0]), int(source_com[1])), 6, (255, 255, 0), -1)
+            cv2.putText(canvas, "S", (int(source_com[0]) - 4, int(source_com[1]) + 3), cv2.FONT_HERSHEY_SIMPLEX, 0.3, (0, 0, 0), 1)
+            
+            # Target COM (cyan)
+            if piece_id in target_coms:
+                target_com = target_coms[piece_id]
+                cv2.circle(canvas, (int(target_com[0]), int(target_com[1])), 8, (0, 0, 0), -1)
+                cv2.circle(canvas, (int(target_com[0]), int(target_com[1])), 6, (0, 255, 255), -1)
+                cv2.putText(canvas, "T", (int(target_com[0]) - 4, int(target_com[1]) + 3), cv2.FONT_HERSHEY_SIMPLEX, 0.3, (0, 0, 0), 1)
+                
+                # Movement info
+                if piece_id in movements:
+                    movement = movements[piece_id]
+                    text = f"P{piece_id}: {movement['distance']:.0f}px"
+                    if abs(movement['rotation']) > 5:
+                        text += f", {movement['rotation']:+.0f}°"
+                    
+                    text_x, text_y = int(source_com[0]) + 15, int(source_com[1]) - 10
+                    (text_width, text_height), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.4, 1)
+                    cv2.rectangle(canvas, (text_x - 2, text_y - text_height - 2), (text_x + text_width + 2, text_y + 2), (255, 255, 255), -1)
+                    cv2.putText(canvas, text, (text_x, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 0, 0), 1)
+        
+        # Legend
+        legend_x, legend_y = 20, canvas.shape[0] - 60
+        cv2.rectangle(canvas, (legend_x - 5, legend_y - 35), (legend_x + 200, legend_y + 5), (255, 255, 255), -1)
+        cv2.rectangle(canvas, (legend_x - 5, legend_y - 35), (legend_x + 200, legend_y + 5), (0, 0, 0), 1)
+        cv2.putText(canvas, "Center of Mass:", (legend_x, legend_y - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+        cv2.circle(canvas, (legend_x + 20, legend_y - 5), 6, (255, 255, 0), -1)
+        cv2.putText(canvas, "Source", (legend_x + 30, legend_y - 1), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 0, 0), 1)
+        cv2.circle(canvas, (legend_x + 90, legend_y - 5), 6, (0, 255, 255), -1)
+        cv2.putText(canvas, "Target", (legend_x + 100, legend_y - 1), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 0, 0), 1)
+        
+        return canvas
 
+
+    def add_movement_button_to_init(self):
+        """Add this button to your button_row1 in __init__"""
+        self.show_movement_button = Button(text='🎯 Movement', background_color=(0.2, 0.6, 0.8, 1), color=(1, 1, 1, 1), font_size='14sp', bold=True)
+        self.show_movement_button.bind(on_press=self.toggle_movement_view)
+        # button_row1.add_widget(self.show_movement_button)
+        self.show_movements = False  # Track state
+
+    def toggle_movement_view(self, instance):
+        """Toggle movement visualization and jump to best solution."""
+        if not self.solver_data.get('movement_data'):
+            self.status_label.text = "No movement data available!"
+            return
+        
+        self.show_movements = not self.show_movements
+        self.show_movement_button.text = '🎯 Hide Movement' if self.show_movements else '🎯 Movement'
+        self.show_movement_button.background_color = (0.8, 0.4, 0.2, 1) if self.show_movements else (0.2, 0.6, 0.8, 1)
+        self.show_best(None)  # Jump to best solution
+
+
+
+
+# app
 class SolverVisualizerApp(App):
     def __init__(self, solver_data, **kwargs):
         super().__init__(**kwargs)
         self.solver_data = solver_data
-    
+
     def build(self):
-        return SolverVisualizer(self.solver_data)
+        visualizer = SolverVisualizer(self.solver_data)
+        visualizer.add_movement_button_to_init()
+        return visualizer
