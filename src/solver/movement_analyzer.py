@@ -1,5 +1,3 @@
-# Movement Analysis Utility
-# Calculate center of mass for pieces in best solution
 
 import numpy as np
 import cv2
@@ -84,16 +82,23 @@ class MovementAnalyzer:
         surfaces: dict
     ) -> Dict:
         """
-        Analyze movements for the best solution.
+        Analyze movements for the best solution with detailed robot movement calculations.
         
         Returns:
             {
                 'source_coms': {piece_id: (x, y)},  # COM in source area
                 'target_coms': {piece_id: (x, y)},  # COM in target area  
-                'movements': {piece_id: {'distance': float, 'rotation': float}}
+                'movements': {piece_id: {
+                    'distance': float,      # Total distance to move
+                    'rotation': float,      # Rotation change in degrees
+                    'dx': float,           # X movement (+ = right, - = left)
+                    'dy': float,           # Y movement (+ = down, - = up)
+                    'x_mm': float,         # X movement in mm for robot
+                    'y_mm': float,         # Y movement in mm for robot
+                }}
             }
         """
-        print("\n🔍 Analyzing movements for best solution...")
+        print("\n🔍 Analyzing robot movements for best solution...")
         
         source_coms = {}
         target_coms = {}
@@ -104,6 +109,9 @@ class MovementAnalyzer:
         source_offset_y = surfaces['source']['offset_y']
         target_offset_x = surfaces['target']['offset_x']
         target_offset_y = surfaces['target']['offset_y']
+        
+        # Scale factor (assuming 2 pixels per mm as mentioned in your code)
+        pixels_per_mm = 2.0
         
         # Calculate source COMs (original positions)
         for piece in puzzle_pieces:
@@ -147,13 +155,20 @@ class MovementAnalyzer:
                     target_coms[piece_id] = global_target_com
                     print(f"  Target P{piece_id}: COM at {global_target_com}")
                     
-                    # Calculate movement if we have both source and target
+                    # Calculate detailed movement if we have both source and target
                     if piece_id in source_coms:
                         source = source_coms[piece_id]
                         target = global_target_com
                         
-                        # Calculate distance
-                        distance = np.sqrt((target[0] - source[0])**2 + (target[1] - source[1])**2)
+                        # Calculate movement components
+                        dx = target[0] - source[0]  # Positive = move right
+                        dy = target[1] - source[1]  # Positive = move down
+                        distance = np.sqrt(dx**2 + dy**2)
+                        
+                        # Convert to robot coordinates (mm)
+                        x_mm = dx / pixels_per_mm
+                        y_mm = dy / pixels_per_mm
+                        distance_mm = distance / pixels_per_mm
                         
                         # Calculate rotation change
                         original_piece = next(p for p in puzzle_pieces if int(p.id) == piece_id)
@@ -162,13 +177,27 @@ class MovementAnalyzer:
                             rotation_change -= 360  # Use shortest rotation
                         
                         movements[piece_id] = {
-                            'distance': float(distance),
-                            'rotation': float(rotation_change)
+                            'distance': float(distance),      # Total distance in pixels
+                            'rotation': float(rotation_change), # Rotation in degrees
+                            'dx': float(dx),                   # X movement in pixels
+                            'dy': float(dy),                   # Y movement in pixels
+                            'x_mm': float(x_mm),              # X movement in mm
+                            'y_mm': float(y_mm),              # Y movement in mm
+                            'distance_mm': float(distance_mm)  # Total distance in mm
                         }
                         
-                        print(f"  Movement P{piece_id}: {distance:.1f}px, {rotation_change:.0f}°")
+                        # Determine movement directions
+                        x_direction = "RIGHT" if dx > 0 else "LEFT" if dx < 0 else "NONE"
+                        y_direction = "DOWN" if dy > 0 else "UP" if dy < 0 else "NONE"
+                        rot_direction = "CLOCKWISE" if rotation_change > 0 else "COUNTER-CW" if rotation_change < 0 else "NONE"
+                        
+                        print(f"  Movement P{piece_id}:")
+                        print(f"    Distance: {distance_mm:.1f}mm ({distance:.1f}px)")
+                        print(f"    X: {x_mm:+.1f}mm ({x_direction})")
+                        print(f"    Y: {y_mm:+.1f}mm ({y_direction})")
+                        print(f"    Rotation: {rotation_change:+.0f}° ({rot_direction})")
         
-        print(f"✅ Analyzed movements for {len(movements)} pieces")
+        print(f"✅ Analyzed robot movements for {len(movements)} pieces")
         
         return {
             'source_coms': source_coms,
@@ -177,6 +206,7 @@ class MovementAnalyzer:
         }
 
 
+# Integration function for pipeline.py
 def calculate_movement_data_for_visualizer(solution_data):
     """
     Call this in pipeline.py to pre-calculate movement data.
