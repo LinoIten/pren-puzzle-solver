@@ -25,7 +25,7 @@ class MockPuzzleGenerator:
         self.a5_width = 840
         self.a5_height = 594
         
-        self.num_cuts = 2  # num_cuts if num_cuts is not None else random.choice([2, 3])
+        self.num_cuts = 2  
         
         # Store piece positions (will be filled during save_pieces)
         self.piece_positions = {}
@@ -111,7 +111,6 @@ class MockPuzzleGenerator:
                 x_min, x_max = x_coords.min(), x_coords.max()
                 y_min, y_max = y_coords.min(), y_coords.max()
                 
-                # Add padding
                 padding = 5
                 x_min = max(0, x_min - padding)
                 x_max = min(self.a4_width, x_max + padding)

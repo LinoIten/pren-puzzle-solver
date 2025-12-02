@@ -232,7 +232,7 @@ class PuzzlePipeline:
             piece_corner_info=piece_corner_info,
             target=target,
             puzzle_pieces=puzzle_pieces,  # Pass pieces to solver
-            score_threshold=230000.0
+            score_threshold=220000.0
         )
         
         if not solution.success:
@@ -272,7 +272,7 @@ class PuzzlePipeline:
                         y=placement['y'],
                         theta=placement['theta']
                     )
-                    piece.confidence = 1.0 if solution.score > 230000 else 0.5
+                    piece.confidence = 1.0 if solution.score > 220000 else 0.5
                     self.logger.debug(f"    Piece {piece_id}: {piece.place_pose}")
                     break
         

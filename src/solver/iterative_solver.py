@@ -41,7 +41,7 @@ class IterativeSolver:
                  piece_corner_info: Dict[int, PieceCornerInfo],
                  target: np.ndarray,
                  puzzle_pieces: list,
-                 score_threshold: float = 230000.0,
+                 score_threshold: float = 220000.0,
                  min_acceptable_score: float = 50000.0,
                  max_corner_combos: int = 1000) -> IterativeSolution:
         """
