@@ -148,14 +148,14 @@ class MockPuzzleGenerator:
         
         # Define corner positions (with margin from edges)
         # A5 is 840 x 594
-        margin = 80  # Distance from corner
+        margin = 20  # Distance from corner
         
         # Four corners: top-left, top-right, bottom-left, bottom-right
         corner_positions = [
             (margin, margin),                           # Top-left
-            (self.a5_width - margin, margin),          # Top-right
+            (self.a5_width + margin, margin),          # Top-right
             (margin, self.a5_height - margin),         # Bottom-left
-            (self.a5_width - margin, self.a5_height - margin)  # Bottom-right
+            (self.a5_width + margin, self.a5_height - margin)  # Bottom-right
         ]
         
         # Create PuzzlePiece objects for each saved piece
