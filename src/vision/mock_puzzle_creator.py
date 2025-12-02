@@ -4,6 +4,9 @@ import cv2
 import numpy as np
 from pathlib import Path
 import random
+import json
+from src.utils.pose import Pose
+from src.utils.puzzle_piece import PuzzlePiece
 
 
 class MockPuzzleGenerator:
@@ -13,11 +16,20 @@ class MockPuzzleGenerator:
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         
-        self.a4_width = 420  # Half scale
+        # Working at 2 pixels per mm: A4 = 210x297mm = 420x594px
+        self.a4_width = 420
         self.a4_height = 594
         
+        # A5 source area (double the area of A4)
+        # 420x297mm = 840x594px
+        self.a5_width = 840
+        self.a5_height = 594
+        
         # Randomly choose 2 or 3 cuts if not specified
-        self.num_cuts = 2#num_cuts if num_cuts is not None else random.choice([2, 3])
+        self.num_cuts = 2  # num_cuts if num_cuts is not None else random.choice([2, 3])
+        
+        # Store piece positions (will be filled during save_pieces)
+        self.piece_positions = {}
         
         print(f"Generating puzzle with {self.num_cuts} cuts")
 
@@ -119,6 +131,68 @@ class MockPuzzleGenerator:
                 })
         
         return full_image, piece_images, debug_image
+    
+    def generate_puzzle_with_positions(self) -> tuple:
+        """
+        Generate a puzzle and assign initial positions in A5 source area.
+        Places pieces in corners to avoid overlap.
+        
+        Returns:
+            (full_image, piece_images, debug_image, puzzle_pieces)
+            where puzzle_pieces is a list of PuzzlePiece objects
+        """
+        
+        # Generate puzzle as normal
+        full_image, piece_images, debug_image = self.generate_puzzle()
+        
+        # Save pieces (this applies random rotation to each piece)
+        piece_paths = self.save_pieces(piece_images)
+        
+        # Define corner positions (with margin from edges)
+        # A5 is 840 x 594
+        margin = 80  # Distance from corner
+        
+        # Four corners: top-left, top-right, bottom-left, bottom-right
+        corner_positions = [
+            (margin, margin),                           # Top-left
+            (self.a5_width - margin, margin),          # Top-right
+            (margin, self.a5_height - margin),         # Bottom-left
+            (self.a5_width - margin, self.a5_height - margin)  # Bottom-right
+        ]
+        
+        # Create PuzzlePiece objects for each saved piece
+        puzzle_pieces = []
+        
+        for idx, piece_path in enumerate(piece_paths):
+            # Extract piece ID from filename
+            piece_id = int(piece_path.stem.split('_')[1])
+            
+            # Load the SAVED piece (which is already rotated)
+            saved_image = cv2.imread(str(piece_path), cv2.IMREAD_UNCHANGED)
+            
+            if saved_image is None:
+                continue
+            
+            # Assign to a corner (cycle through corners)
+            corner_idx = idx % len(corner_positions)
+            base_x, base_y = corner_positions[corner_idx]
+            
+            # Get piece dimensions
+            piece_h, piece_w = saved_image.shape[:2]
+            
+            # Clamp position to keep piece fully inside A5
+            x = max(margin, min(self.a5_width - piece_w - margin, base_x))
+            y = max(margin, min(self.a5_height - piece_h - margin, base_y))
+            
+            # Create PuzzlePiece with initial pick pose in pixels
+            pick_pose = Pose(x=float(x), y=float(y), theta=0.0)
+            piece = PuzzlePiece(pid=str(piece_id), pick=pick_pose)
+            
+            puzzle_pieces.append(piece)
+            
+            print(f"Piece {piece_id}: corner {corner_idx+1}/4, position ({x:.1f}px, {y:.1f}px)")
+        
+        return full_image, piece_images, debug_image, puzzle_pieces
 
     def _generate_random_cut(self, orientation='vertical') -> np.ndarray:
         """Generate a random cut with specified orientation."""
@@ -409,8 +483,8 @@ class MockPuzzleGenerator:
             print(f"Saved piece {piece_id} to {filepath} (rotated {random_angle}°)")
         
         return saved_paths
-
-    def load_pieces_for_solver(self, piece_paths: list = None) -> tuple: # type: ignore
+    
+    def load_pieces_for_solver(self, piece_paths: list = None) -> tuple:  # type: ignore
         """
         Load saved pieces and prepare them for the solver.
         
@@ -511,3 +585,4 @@ class MockPuzzleGenerator:
         for old_piece in self.output_dir.glob("piece_*.png"):
             old_piece.unlink()
             print(f"Removed old piece: {old_piece.name}")
+            
