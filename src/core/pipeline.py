@@ -522,12 +522,13 @@ class PuzzlePipeline:
             'piece_shapes': solution['piece_shapes'],
             'target': solution['target'],
             'source': solution['source'],
-            'surface_info': solution['surfaces'],  
+            'surfaces': solution['surfaces'],    
             'initial_placements': solution['initial_placements'],
             'best_score': solution['best_score'],
             'best_guess': solution.get('best_guess'),
             'best_guess_index': solution.get('best_guess_index', 0),
-            'renderer': solution['renderer'] 
+            'renderer': solution['renderer'],
+            'puzzle_pieces': solution['puzzle_pieces']  
         }
         
         self.logger.info(f"  → Passing {len(solution['guesses'])} guesses to visualizer")
