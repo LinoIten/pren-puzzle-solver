@@ -10,6 +10,7 @@ from typing import Optional
 
 import cv2
 
+from src.solver.iterative_solver import IterativeSolver
 from src.solver.piece_analyzer import PieceAnalyzer
 from src.solver.movement_analyzer import calculate_movement_data_for_visualizer
 from src.ui.simulator.solver_visualizer import SolverVisualizerApp
@@ -176,26 +177,40 @@ class PuzzlePipeline:
         self.logger.info("  → Segmentierung...")
         self.logger.info("  → Feature-Extraktion...")
         
-        # Load pieces for solver
         piece_ids, piece_shapes = generator.load_pieces_for_solver()
-        
-        # ANALYZE ALL PIECES FOR CORNERS
-        piece_corner_info = PieceAnalyzer.analyze_all_pieces(piece_shapes)
-        
+
+        PieceAnalyzer.analyze_all_pieces(puzzle_pieces, piece_shapes)
+
+        # Print analysis results
+        self.logger.info("\n" + "="*80)
+        self.logger.info("PIECE ANALYSIS RESULTS")
+        self.logger.info("="*80)
+
+        corner_count = sum(1 for p in puzzle_pieces if p.piece_type == "corner")
+        edge_count = sum(1 for p in puzzle_pieces if p.piece_type == "edge")
+        center_count = sum(1 for p in puzzle_pieces if p.piece_type == "center")
+
+        self.logger.info(f"\n📊 Classification:")
+        self.logger.info(f"    Corner pieces: {corner_count}")
+        self.logger.info(f"    Edge pieces: {edge_count}")
+        self.logger.info(f"    Center pieces: {center_count}")
+
         # Save visualizations
-        for piece_id, info in piece_corner_info.items():
+        debug_dir = "data/mock_pieces/debug"
+        os.makedirs(debug_dir, exist_ok=True)
+
+        for piece in puzzle_pieces:
+            piece_id = int(piece.id)
             if piece_id in piece_shapes:
-                vis = PieceAnalyzer.visualize_corners(
-                    (piece_shapes[piece_id] * 255).astype(np.uint8),
-                    info
-                )
-                debug_dir = "data/mock_pieces/debug"
-                os.makedirs(debug_dir, exist_ok=True)
-                cv2.imwrite(f"{debug_dir}/piece_{piece_id}_corners.png", vis)
-        
-        self.logger.info(f"  → {len(piece_ids)} Teile geladen und analysiert")
-        
-        return piece_ids, piece_shapes, piece_corner_info, puzzle_pieces
+                self.logger.info(f"\n{piece.summary()}")
+                vis = PieceAnalyzer.visualize_corners(piece_shapes[piece_id], piece)
+                cv2.imwrite(f"{debug_dir}/piece_{piece_id}_analysis.png", vis)
+
+        self.logger.info(f"\n  → {len(piece_ids)} Teile geladen und analysiert")
+        self.logger.info("="*80 + "\n")
+
+        # Return empty dict for backward compatibility
+        return piece_ids, piece_shapes, {}, puzzle_pieces
 
     def _solve_puzzle(self, pieces, piece_shapes, piece_corner_info, puzzle_pieces):
         """Puzzle loesen mit iterativem Ansatz"""
@@ -210,13 +225,8 @@ class PuzzlePipeline:
         self.logger.info(f"  → Target (A4) at ({surfaces['target']['offset_x']}, {surfaces['target']['offset_y']}): {surfaces['target']['width']}x{surfaces['target']['height']}")
         self.logger.info(f"  → Source (A5) at ({surfaces['source']['offset_x']}, {surfaces['source']['offset_y']}): {surfaces['source']['width']}x{surfaces['source']['height']}")
         
-        # Create renderer to match target dimensions
         height, width = target.shape
         self.renderer = GuessRenderer(width=width, height=height)
-        
-        self.logger.info("  → Iteratives Loesen starten...")
-        
-        from ..solver.iterative_solver import IterativeSolver
         
         iterative_solver = IterativeSolver(
             renderer=self.renderer,
@@ -227,15 +237,13 @@ class PuzzlePipeline:
         # Create initial placements from PuzzlePiece objects
         initial_placements = self._create_initial_placements_from_pieces(puzzle_pieces)
         
-        # Solve iteratively, trying different anchor pieces
+        # Solve iteratively - THIS CALL STAYS THE SAME
         solution = iterative_solver.solve_iteratively(
             piece_shapes=piece_shapes,
-            piece_corner_info=piece_corner_info,
             target=target,
-            puzzle_pieces=puzzle_pieces,  # Pass pieces to solver
+            puzzle_pieces=puzzle_pieces,  
             score_threshold=220000.0
         )
-        
         if not solution.success:
             self.logger.warning("  ! Keine gute Loesung gefunden")
         else:

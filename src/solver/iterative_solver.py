@@ -4,8 +4,6 @@ import numpy as np
 from dataclasses import dataclass
 
 from src.solver.corner_fitter import CornerFit, CornerFitter
-from src.solver.piece_analyzer import PieceCornerInfo
-
 from src.utils.pose import Pose
 from src.utils.puzzle_piece import PuzzlePiece
 
@@ -26,6 +24,8 @@ class IterativeSolver:
     """
     Iterative puzzle solver that tries corner pieces one at a time.
     Updates PuzzlePiece objects with final place_pose.
+    
+    ORIGINAL ALGORITHM - Now reads from enriched PuzzlePiece objects.
     """
 
     def __init__(self, renderer, scorer, guess_generator):
@@ -37,16 +37,18 @@ class IterativeSolver:
         self.all_scores = []
     
     def solve_iteratively(self,
-                 piece_shapes: Dict[int, np.ndarray],
-                 piece_corner_info: Dict[int, PieceCornerInfo],
-                 target: np.ndarray,
-                 puzzle_pieces: list,
-                 score_threshold: float = 220000.0,
-                 min_acceptable_score: float = 50000.0,
-                 max_corner_combos: int = 1000) -> IterativeSolution:
+                          piece_shapes: Dict[int, np.ndarray],
+                          target: np.ndarray,
+                          puzzle_pieces: list,
+                          score_threshold: float = 220000.0,
+                          min_acceptable_score: float = 50000.0,
+                          max_corner_combos: int = 1000) -> IterativeSolution:
         """
         Try different combinations of corners for each piece.
         Updates puzzle_pieces with place_pose when solution is found.
+        
+        NOW READS FROM: puzzle_pieces[i].corners (enriched data)
+        INSTEAD OF: piece_corner_info dict
         """
         print("\n🔄 Starting iterative solving...")
         
@@ -57,11 +59,10 @@ class IterativeSolver:
         self.all_guesses = []
         self.all_scores = []
         
-        # Find pieces with corners
+        # Find pieces with corners - READ FROM ENRICHED PUZZLEPIECE OBJECTS
         corner_pieces = [
-            (piece_id, info) 
-            for piece_id, info in piece_corner_info.items() 
-            if info.has_corner and len(info.corner_rotations) > 0
+            piece for piece in puzzle_pieces
+            if piece.has_corner and len(piece.corners) > 0
         ]
         
         if not corner_pieces:
@@ -77,14 +78,14 @@ class IterativeSolver:
             )
         
         print(f"\n  Found {len(corner_pieces)} pieces with corners:")
-        for piece_id, info in corner_pieces:
-            print(f"    Piece {piece_id}: {len(info.corner_rotations)} corners detected")
+        for piece in corner_pieces:
+            print(f"    Piece {piece.id}: {len(piece.corners)} corners detected")
         
         # Generate all combinations
         import itertools
         piece_corner_options = []
-        for piece_id, info in corner_pieces:
-            piece_corner_options.append(list(range(len(info.corner_rotations))))
+        for piece in corner_pieces:
+            piece_corner_options.append(list(range(len(piece.corners))))
         
         all_corner_combinations = list(itertools.product(*piece_corner_options))
         total_combos = len(all_corner_combinations)
@@ -94,8 +95,8 @@ class IterativeSolver:
         # Prioritize: try best corners first
         def combo_quality(combo_indices):
             total_quality = 0
-            for (piece_id, info), corner_idx in zip(corner_pieces, combo_indices):
-                total_quality += info.corner_qualities[corner_idx].overall_score
+            for piece, corner_idx in zip(corner_pieces, combo_indices):
+                total_quality += piece.corners[corner_idx].quality
             return total_quality
         
         all_corner_combinations.sort(key=combo_quality, reverse=True)
@@ -157,32 +158,24 @@ class IterativeSolver:
             combo_qual = combo_quality(corner_indices)
             print(f"  Corner indices: {corner_indices} (combined quality: {combo_qual:.3f})")
             
-            # Create modified corner info
-            modified_corner_info = {}
+            # Build rotation mapping for this combination
+            piece_rotations = {}
             
-            for (piece_id, info), corner_idx in zip(corner_pieces, corner_indices):
-                selected_rotation = info.corner_rotations[corner_idx]
-                selected_quality = info.corner_qualities[corner_idx]
+            for piece, corner_idx in zip(corner_pieces, corner_indices):
+                selected_corner = piece.corners[corner_idx]
+                selected_rotation = selected_corner.rotation_to_align
                 
-                print(f"    Piece {piece_id}: Corner #{corner_idx+1}, quality={selected_quality.overall_score:.3f}, rotation={selected_rotation:.1f}°")
+                print(f"    Piece {piece.id}: Corner #{corner_idx+1}, quality={selected_corner.quality:.3f}, rotation={selected_rotation:.1f}°")
                 
-                modified_corner_info[piece_id] = PieceCornerInfo(
-                    piece_id=piece_id,
-                    has_corner=True,
-                    corner_count=1,
-                    corner_positions=[selected_quality.position],
-                    corner_qualities=[selected_quality],
-                    corner_rotations=[selected_rotation],
-                    primary_corner_angle=None,
-                    rotation_to_bottom_right=selected_rotation,
-                    piece_center=info.piece_center
-                )
+                piece_rotations[int(piece.id)] = selected_rotation
             
             # Generate guesses
             guesses = self._generate_guesses_with_all_corners(
                 piece_shapes,
-                modified_corner_info,
+                corner_pieces,
+                piece_rotations,
                 target,
+                puzzle_pieces,
                 max_guesses=num_guesses
             )
             
@@ -279,21 +272,16 @@ class IterativeSolver:
         )
     
     def _generate_guesses_with_all_corners(self,
-                                        piece_shapes: Dict[int, np.ndarray],
-                                        piece_corner_info: Dict[int, PieceCornerInfo],
-                                        target: np.ndarray,
-                                        max_guesses: int = 10) -> List[List[dict]]:
+                                           piece_shapes: Dict[int, np.ndarray],
+                                           corner_pieces: List[PuzzlePiece],
+                                           piece_rotations: Dict[int, float],
+                                           target: np.ndarray,
+                                           all_pieces: List[PuzzlePiece],
+                                           max_guesses: int = 10) -> List[List[dict]]:
         """Generate guesses where ALL pieces with corners are placed in corners."""
         import random
         
         height, width = target.shape
-        
-        # Find all pieces with corners
-        corner_pieces = [
-            (piece_id, info) 
-            for piece_id, info in piece_corner_info.items() 
-            if info.has_corner and info.rotation_to_bottom_right is not None
-        ]
         
         if len(corner_pieces) == 0:
             return []
@@ -310,10 +298,10 @@ class IterativeSolver:
         ]
         
         # Get non-corner pieces
-        corner_piece_ids = {p[0] for p in corner_pieces}
-        non_corner_piece_ids = [
-            pid for pid in piece_shapes.keys() 
-            if pid not in corner_piece_ids
+        corner_piece_ids = {int(p.id) for p in corner_pieces}
+        non_corner_pieces = [
+            p for p in all_pieces
+            if int(p.id) not in corner_piece_ids
         ]
         
         guesses = []
@@ -323,7 +311,7 @@ class IterativeSolver:
             shuffled_pieces = list(corner_pieces)
             random.shuffle(shuffled_pieces)
             
-            perm_key = tuple(p[0] for p in shuffled_pieces)
+            perm_key = tuple(int(p.id) for p in shuffled_pieces)
             if perm_key in tried_permutations:
                 continue
             tried_permutations.add(perm_key)
@@ -332,8 +320,9 @@ class IterativeSolver:
             
             # Place each corner piece
             available_corners = corners[:len(corner_pieces)]
-            for (piece_id, piece_info), (corner_name, corner_x, corner_y, rotation_offset) in zip(shuffled_pieces, available_corners):
-                rotation = piece_info.rotation_to_bottom_right + rotation_offset
+            for piece, (corner_name, corner_x, corner_y, rotation_offset) in zip(shuffled_pieces, available_corners):
+                piece_id = int(piece.id)
+                rotation = piece_rotations[piece_id] + rotation_offset
                 
                 rotated_mask = self._rotate_and_crop(piece_shapes[piece_id], rotation)
                 piece_h, piece_w = rotated_mask.shape
@@ -356,7 +345,8 @@ class IterativeSolver:
                 })
             
             # Place non-corner pieces randomly
-            for piece_id in non_corner_piece_ids:
+            for piece in non_corner_pieces:
+                piece_id = int(piece.id)
                 theta = random.choice([0, 90, 180, 270])
                 
                 rotated = self._rotate_and_crop(piece_shapes[piece_id], theta)

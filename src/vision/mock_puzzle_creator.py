@@ -1,10 +1,8 @@
-# src/vision/mock_puzzle_generator.py
 
 import cv2
 import numpy as np
 from pathlib import Path
 import random
-import json
 from src.utils.pose import Pose
 from src.utils.puzzle_piece import PuzzlePiece
 
