@@ -1,3 +1,10 @@
+"""
+Piece analyzer that detects corners and straight edges, 
+then populates PuzzlePiece objects with the analysis data.
+
+This is a drop-in replacement for src.solver.piece_analyzer.PieceAnalyzer
+that extends the existing corner detection with straight edge detection.
+"""
 
 import cv2
 import numpy as np
@@ -6,16 +13,29 @@ from src.utils.puzzle_piece import PuzzlePiece, CornerData, EdgeData
 
 
 class PieceAnalyzer:
+    """
+    Analyzes puzzle pieces to detect corners and straight edges.
+    Enriches PuzzlePiece objects with analysis data in-place.
+    
+    Usage:
+        # Create pieces
+        pieces = [PuzzlePiece(pid="0", pick=Pose(x=100, y=200, theta=0)), ...]
+        
+        # Analyze all pieces
+        PieceAnalyzer.analyze_all_pieces(pieces, piece_shapes)
+        
+        # Now pieces have .piece_type, .corners, .edges, etc populated
+    """
     
     # Detection thresholds
     MIN_EDGE_LENGTH = 30
-    MIN_EDGE_STRAIGHTNESS = 0.90
-    MIN_EDGE_SCORE = 0.7
+    MIN_EDGE_STRAIGHTNESS = 0.92
+    MIN_EDGE_SCORE = 0.6
     
     # Corner detection thresholds (from your existing code)
-    ANGLE_TOL = 10
+    ANGLE_TOL = 9
     MIN_CORNER_STRAIGHTNESS = 0.85
-    MIN_CORNER_EDGE_LENGTH = 15
+    MIN_CORNER_EDGE_LENGTH = 20
     
     @staticmethod
     def analyze_all_pieces(puzzle_pieces: List[PuzzlePiece], 
@@ -43,11 +63,11 @@ class PieceAnalyzer:
             
             # Print summary
             if piece.piece_type == "corner":
-                print(f"  ✓ Piece {piece_id}: CORNER ({len(piece.corners)} corner(s))")
+                print(f"  ✓ Piece {piece_id}: CORNER ({len(piece.corners)} corner(s), {len(piece.edges)} edge(s))")
             elif piece.piece_type == "edge":
-                print(f"  ✓ Piece {piece_id}: EDGE ({len(piece.edges)} straight edge(s))")
+                print(f"  ✓ Piece {piece_id}: EDGE ({len(piece.corners)} corner(s), {len(piece.edges)} edge(s))")
             else:
-                print(f"  ○ Piece {piece_id}: CENTER (no corners or edges)")
+                print(f"  ○ Piece {piece_id}: CENTER ({len(piece.corners)} corner(s), {len(piece.edges)} edge(s))")
     
     @staticmethod
     def analyze_piece(piece: PuzzlePiece, mask: np.ndarray) -> None:
@@ -103,16 +123,36 @@ class PieceAnalyzer:
                 best_edge = max(edge_data_list, key=lambda e: e.quality)
                 piece.primary_edge_rotation = best_edge.rotations_to_align.get('bottom')
             
-            # Classify piece type
-            if piece.has_corner:
+            # Classify piece type - SMARTER LOGIC
+            # A true corner piece should have:
+            # - 2 corners (ideal)
+            # - OR 1 high-quality corner (>0.75) with NO edges
+            # An edge piece should have:
+            # - At least 1 straight edge
+            # - Even if it has a weak corner
+            
+            num_corners = len(corner_data_list)
+            num_edges = len(edge_data_list)
+
+            if (num_corners > 0 and corner_data_list[0].quality > 0.9):
+                # Very high-quality corner detected -> definitely a corner piece
                 piece.piece_type = "corner"
-                piece.analysis_confidence = max(c.quality for c in corner_data_list)
-            elif piece.has_straight_edge:
+                piece.analysis_confidence = corner_data_list[0].quality
+            elif (num_edges > 0 and edge_data_list[0].quality > 0.8):
+                # Very high-quality edge detected -> definitely an edge piece
                 piece.piece_type = "edge"
-                piece.analysis_confidence = max(e.quality for e in edge_data_list)
+                piece.analysis_confidence = edge_data_list[0].quality
+            elif (num_corners > 0):
+                piece.piece_type = "corner"
+                piece.analysis_confidence = corner_data_list[0].quality
+            elif (num_edges > 0):
+                piece.piece_type = "edge"
+                piece.analysis_confidence = edge_data_list[0].quality
             else:
                 piece.piece_type = "center"
-                piece.analysis_confidence = 1.0  # We're confident it's not corner/edge
+                piece.analysis_confidence = 1.0
+
+            
             
         except Exception as e:
             print(f"  ⚠️  Error analyzing piece {piece.id}: {e}")
@@ -234,6 +274,23 @@ class PieceAnalyzer:
             raw_rotation = (target_bisector - bisector_angle) % 360
             rotation_to_align = -(raw_rotation + 90)
             
+            # NEW: Check boundary overhang
+            # Would this corner cause the piece to extend beyond puzzle boundaries?
+            overhang_penalty = PieceAnalyzer._calculate_corner_overhang(
+                mask, p_curr, rotation_to_align, piece_center
+            )
+            
+            # Reduce quality if corner would cause overhang
+            quality_before = overall_quality
+            overall_quality = overall_quality * (1.0 - overhang_penalty)
+            
+            # DEBUG: Show quality reduction
+            if overhang_penalty > 0.1:
+                print(f"      ⚠️  Corner quality: {quality_before:.3f} → {overall_quality:.3f} (penalty={overhang_penalty:.3f})")
+            
+            if overall_quality < 0.65:
+                continue
+            
             corner_data = CornerData(
                 position=(int(p_curr[0]), int(p_curr[1])),
                 angle=float(angle),
@@ -247,7 +304,121 @@ class PieceAnalyzer:
         # Sort by quality
         corner_data_list.sort(key=lambda c: c.quality, reverse=True)
         
+        # DEBUG: Print corner summary
+        if len(corner_data_list) > 0:
+            print(f"    📍 Detected {len(corner_data_list)} corner(s):")
+            for i, corner in enumerate(corner_data_list[:4]):
+                print(f"       #{i+1}: pos={corner.position}, quality={corner.quality:.3f}, rot={corner.rotation_to_align:.1f}°")
+        
         return corner_data_list[:4]  # Return top 4
+    
+    @staticmethod
+    def _calculate_corner_overhang(mask: np.ndarray,
+                                   corner_point: np.ndarray,
+                                   rotation: float,
+                                   piece_center: Tuple[float, float]) -> float:
+        """
+        Calculate how much a piece would overhang if this corner is placed at puzzle corner.
+        
+        This actually rotates the piece and checks if it fits in a corner region.
+        
+        Returns:
+            Overhang penalty (0.0 = no overhang, 1.0 = severe overhang)
+        """
+        # Get piece dimensions
+        piece_h, piece_w = mask.shape
+        cx, cy = piece_center
+        corner_x, corner_y = int(corner_point[0]), int(corner_point[1])
+        
+        # STEP 1: Rotate the piece to align the corner
+        # (Simulate what would happen when placing in puzzle corner)
+        if abs(rotation) > 0.1:  # Only rotate if needed
+            # Rotate around piece center
+            center = (piece_w // 2, piece_h // 2)
+            M = cv2.getRotationMatrix2D(center, rotation, 1.0)
+            
+            # Calculate new size
+            cos = np.abs(M[0, 0])
+            sin = np.abs(M[0, 1])
+            new_w = int((piece_h * sin) + (piece_w * cos))
+            new_h = int((piece_h * cos) + (piece_w * sin))
+            
+            # Adjust translation
+            M[0, 2] += (new_w / 2) - center[0]
+            M[1, 2] += (new_h / 2) - center[1]
+            
+            # Rotate the mask
+            rotated_mask = cv2.warpAffine(mask, M, (new_w, new_h))
+            
+            # Transform corner point
+            corner_homogeneous = np.array([corner_x, corner_y, 1])
+            rotated_corner = M @ corner_homogeneous
+            corner_x_rot = int(rotated_corner[0])
+            corner_y_rot = int(rotated_corner[1])
+        else:
+            # No rotation needed
+            rotated_mask = mask
+            corner_x_rot = corner_x
+            corner_y_rot = corner_y
+            new_w = piece_w
+            new_h = piece_h
+        
+        # STEP 2: Check how much extends beyond corner placement
+        # When placed at bottom-right corner (width, height):
+        # - Corner point should be at (width, height)
+        # - Piece should extend left and up ONLY
+        # - Should NOT extend right or down
+        
+        # Find actual piece bounds in rotated mask
+        piece_points = np.argwhere(rotated_mask > 0)
+        if len(piece_points) == 0:
+            return 0.0  # No piece? No penalty
+        
+        min_y, min_x = piece_points.min(axis=0)
+        max_y, max_x = piece_points.max(axis=0)
+        
+        # Calculate how far piece extends from corner in each direction
+        # If corner is at (corner_x_rot, corner_y_rot):
+        extends_left = corner_x_rot - min_x    # Should be positive (good)
+        extends_right = max_x - corner_x_rot   # Should be ~0 (bad if large)
+        extends_up = corner_y_rot - min_y      # Should be positive (good)
+        extends_down = max_y - corner_y_rot    # Should be ~0 (bad if large)
+        
+        # Calculate overhang in "wrong" directions
+        max_allowed_overhang = 5  # pixels (very strict)
+        
+        right_overhang = max(0, extends_right - max_allowed_overhang)
+        down_overhang = max(0, extends_down - max_allowed_overhang)
+        
+        # Also penalize if doesn't extend enough in "good" directions
+        min_required_extent = 20  # Should extend at least 20px left and up
+        
+        left_deficit = max(0, min_required_extent - extends_left)
+        up_deficit = max(0, min_required_extent - extends_up)
+        
+        # Calculate total penalty
+        piece_size = max(new_w, new_h)
+        
+        # Overhang penalty (extends too far in wrong direction)
+        overhang_penalty = (right_overhang + down_overhang) / piece_size
+        
+        # Extent penalty (doesn't extend enough in right direction)
+        extent_penalty = (left_deficit + up_deficit) / piece_size
+        
+        # Combined penalty
+        total_penalty = overhang_penalty + extent_penalty * 0.5
+        
+        # DEBUG OUTPUT
+        if total_penalty > 0.1:  # Only show problematic corners
+            print(f"      🔍 Overhang check at ({corner_x}, {corner_y}), rot={rotation:.1f}°:")
+            print(f"         Extends: L={extends_left}px, R={extends_right}px, U={extends_up}px, D={extends_down}px")
+            print(f"         Overhang: right={right_overhang}px, down={down_overhang}px")
+            print(f"         Deficit: left={left_deficit}px, up={up_deficit}px")
+            print(f"         Penalties: overhang={overhang_penalty:.3f}, extent={extent_penalty:.3f}")
+            print(f"         TOTAL PENALTY: {total_penalty:.3f}")
+        
+        # Clamp to [0, 1]
+        return min(1.0, total_penalty)
     
     @staticmethod
     def _detect_edges(mask: np.ndarray,

@@ -1,3 +1,8 @@
+"""
+Iterative solver - ORIGINAL LOGIC
+Now reads corner data from enriched PuzzlePiece objects instead of piece_corner_info dict.
+"""
+
 from typing import Dict, List, Optional
 import cv2
 import numpy as np
@@ -278,7 +283,12 @@ class IterativeSolver:
                                            target: np.ndarray,
                                            all_pieces: List[PuzzlePiece],
                                            max_guesses: int = 10) -> List[List[dict]]:
-        """Generate guesses where ALL pieces with corners are placed in corners."""
+        """
+        Generate guesses where:
+        - Corner pieces are placed in corners
+        - Edge pieces are placed along frame sides (at middle height)
+        - Center pieces are placed randomly
+        """
         import random
         
         height, width = target.shape
@@ -297,30 +307,49 @@ class IterativeSolver:
             ('top_right', width, 0, 90),
         ]
         
-        # Get non-corner pieces
+        # Separate pieces by type
         corner_piece_ids = {int(p.id) for p in corner_pieces}
-        non_corner_pieces = [
-            p for p in all_pieces
-            if int(p.id) not in corner_piece_ids
+        
+        edge_pieces = []
+        center_pieces = []
+        
+        for p in all_pieces:
+            if int(p.id) in corner_piece_ids:
+                continue
+            
+            # Check if it's an edge piece (has straight edge but no corner)
+            if p.has_straight_edge and len(p.edges) > 0:
+                edge_pieces.append(p)
+            else:
+                center_pieces.append(p)
+        
+        # Define the 4 sides (for edge pieces) - one edge piece per side
+        sides = [
+            ('bottom', 0, height, 0),      # flush bottom, x will be centered
+            ('right', width, 0, 270),      # flush right, y will be centered
+            ('top', 0, 0, 180),            # flush top, x will be centered
+            ('left', 0, 0, 90),            # flush left, y will be centered
         ]
+        
+        print(f"    Edge pieces: {len(edge_pieces)}, Center pieces: {len(center_pieces)}")
         
         guesses = []
         tried_permutations = set()
         
         for _ in range(max_guesses):
-            shuffled_pieces = list(corner_pieces)
-            random.shuffle(shuffled_pieces)
+            shuffled_corners = list(corner_pieces)
+            random.shuffle(shuffled_corners)
             
-            perm_key = tuple(int(p.id) for p in shuffled_pieces)
+            perm_key = tuple(int(p.id) for p in shuffled_corners)
             if perm_key in tried_permutations:
                 continue
             tried_permutations.add(perm_key)
             
             guess = []
             
-            # Place each corner piece
+            # 1. Place corner pieces in corners
             available_corners = corners[:len(corner_pieces)]
-            for piece, (corner_name, corner_x, corner_y, rotation_offset) in zip(shuffled_pieces, available_corners):
+            for piece, (corner_name, corner_x, corner_y, rotation_offset) in zip(shuffled_corners, available_corners):
                 piece_id = int(piece.id)
                 rotation = piece_rotations[piece_id] + rotation_offset
                 
@@ -344,8 +373,46 @@ class IterativeSolver:
                     'theta': float(rotation)
                 })
             
-            # Place non-corner pieces randomly
-            for piece in non_corner_pieces:
+            # 2. Place edge pieces on sides (one per side, deterministically)
+            # Assign each edge piece to a different side
+            available_sides = sides[:len(edge_pieces)]
+            
+            for piece, (side_name, base_x, base_y, rotation_offset) in zip(edge_pieces, available_sides):
+                piece_id = int(piece.id)
+                
+                # Use primary edge rotation + offset for this side
+                if piece.primary_edge_rotation is not None:
+                    rotation = piece.primary_edge_rotation + rotation_offset
+                else:
+                    rotation = rotation_offset
+                
+                # Apply rotation and get dimensions
+                rotated_mask = self._rotate_and_crop(piece_shapes[piece_id], rotation)
+                piece_h, piece_w = rotated_mask.shape
+                
+                # Calculate position based on side (centered on that side)
+                if side_name == 'bottom':
+                    x = (width - piece_w) / 2  # Center horizontally
+                    y = height - piece_h       # Flush with bottom
+                elif side_name == 'top':
+                    x = (width - piece_w) / 2  # Center horizontally
+                    y = 0                       # Flush with top
+                elif side_name == 'left':
+                    x = 0                       # Flush with left
+                    y = (height - piece_h) / 2  # Center vertically (middle height)
+                else:  # right
+                    x = width - piece_w         # Flush with right
+                    y = (height - piece_h) / 2  # Center vertically (middle height)
+                
+                guess.append({
+                    'piece_id': piece_id,
+                    'x': float(x),
+                    'y': float(y),
+                    'theta': float(rotation)
+                })
+            
+            # 3. Place center pieces randomly in interior
+            for piece in center_pieces:
                 piece_id = int(piece.id)
                 theta = random.choice([0, 90, 180, 270])
                 

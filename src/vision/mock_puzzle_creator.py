@@ -23,7 +23,7 @@ class MockPuzzleGenerator:
         self.a5_width = 840
         self.a5_height = 594
         
-        self.num_cuts = 2  
+        self.num_cuts = 3  
         
         # Store piece positions (will be filled during save_pieces)
         self.piece_positions = {}
@@ -59,7 +59,7 @@ class MockPuzzleGenerator:
             # Option 2: Two horizontals, one vertical
             # Option 3: One vertical, one horizontal, one diagonal
             
-            config = random.choice(['vvh', 'vhh', 'vhd'])
+            config = "vhh"# random.choice(['vvh', 'vhh', 'vhd'])
             
             if config == 'vvh':
                 # Two vertical cuts dividing into thirds, one horizontal

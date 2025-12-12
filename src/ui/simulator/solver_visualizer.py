@@ -4,7 +4,7 @@ from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.image import Image
 from kivy.uix.label import Label
 from kivy.uix.button import Button
-from kivy.graphics.texture import Texture
+from kivy.graphics.texture import Texture   
 from kivy.graphics import Color, Rectangle
 from kivy.clock import Clock
 import numpy as np
@@ -586,12 +586,11 @@ class SolverVisualizer(BoxLayout):
                     (0, 0, 0), 2)
         
         # Title
-        cv2.putText(canvas, "ROBOT MOVEMENT INSTRUCTIONS", 
+        '''cv2.putText(canvas, "ROBOT MOVEMENT INSTRUCTIONS", 
                 (summary_x + 10, summary_y + 20),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 2)
         
         # Column headers
-        header_y = summary_y + 40
         cv2.putText(canvas, "Piece", (summary_x + 10, header_y), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 0, 0), 1)
         cv2.putText(canvas, "X Move (mm)", (summary_x + 60, header_y), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 0, 0), 1)
         cv2.putText(canvas, "Y Move (mm)", (summary_x + 150, header_y), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 0, 0), 1)
@@ -600,7 +599,8 @@ class SolverVisualizer(BoxLayout):
         
         # Draw header line
         cv2.line(canvas, (summary_x + 5, header_y + 5), (summary_x + summary_width - 10, header_y + 5), (0, 0, 0), 1)
-        
+        '''
+        header_y = summary_y + 40
         # Movement data for each piece
         for i, movement in enumerate(movement_summary):
             data_y = header_y + 20 + (i * 18)
