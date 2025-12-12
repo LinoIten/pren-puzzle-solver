@@ -28,9 +28,9 @@ class PieceAnalyzer:
     """
     
     # Detection thresholds
-    MIN_EDGE_LENGTH = 32
-    MIN_EDGE_STRAIGHTNESS = 0.9
-    MIN_EDGE_SCORE = 0.6
+    MIN_EDGE_LENGTH = 30
+    MIN_EDGE_STRAIGHTNESS = 0.65
+    MIN_EDGE_SCORE = 0.4
     
     # Corner detection thresholds (from your existing code)
     ANGLE_TOL = 8
