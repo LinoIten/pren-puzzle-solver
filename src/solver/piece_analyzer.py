@@ -28,13 +28,13 @@ class PieceAnalyzer:
     """
     
     # Detection thresholds
-    MIN_EDGE_LENGTH = 25
+    MIN_EDGE_LENGTH = 32
     MIN_EDGE_STRAIGHTNESS = 0.9
     MIN_EDGE_SCORE = 0.6
     
     # Corner detection thresholds (from your existing code)
-    ANGLE_TOL = 9
-    MIN_CORNER_STRAIGHTNESS = 0.88
+    ANGLE_TOL = 8
+    MIN_CORNER_STRAIGHTNESS = 0.9
     MIN_CORNER_EDGE_LENGTH = 25
     
     @staticmethod
@@ -134,7 +134,7 @@ class PieceAnalyzer:
             num_corners = len(corner_data_list)
             num_edges = len(edge_data_list)
 
-            if (num_corners > 0 and corner_data_list[0].quality > 0.9):
+            if (num_corners > 0 and corner_data_list[0].quality > 0.85):
                 # Very high-quality corner detected -> definitely a corner piece
                 piece.piece_type = "corner"
                 piece.analysis_confidence = corner_data_list[0].quality
@@ -142,6 +142,14 @@ class PieceAnalyzer:
                 # Very high-quality edge detected -> definitely an edge piece
                 piece.piece_type = "edge"
                 piece.analysis_confidence = edge_data_list[0].quality
+            elif (num_corners > 0 and num_edges > 0):
+                # chose the one with higher quality
+                if corner_data_list[0].quality >= edge_data_list[0].quality:
+                    piece.piece_type = "corner"
+                    piece.analysis_confidence = corner_data_list[0].quality
+                else:
+                    piece.piece_type = "edge"
+                    piece.analysis_confidence = edge_data_list[0].quality
             elif (num_corners > 0):
                 piece.piece_type = "corner"
                 piece.analysis_confidence = corner_data_list[0].quality
