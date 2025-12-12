@@ -73,9 +73,8 @@ class IterativeSolver:
                           score_threshold: float = 220000.0,
                           min_acceptable_score: float = 50000.0,
                           max_corner_combos: int = 1000,
-                          # Mode switching parameters
                           mode_switching: bool = True,
-                          initial_corner_count: int = 100,  # NEW: How many corners to evaluate upfront
+                          initial_corner_count: int = 60,  # NEW: How many corners to evaluate upfront
                           max_corners_to_refine: int = 10,  # NEW: Max corners to try edge refinement on
                           refinement_patience: int = 5,
                           max_iterations: int = 500) -> IterativeSolution:
@@ -379,7 +378,20 @@ class IterativeSolver:
             'bottom',
         ]
         
-        rotations = [0, 90, 180, 270]
+        rotations = set()
+
+        # 2) Add primary rotation if this piece belongs on this side
+        if edge_piece.primary_edge_rotation is not None:
+            rotations.add(edge_piece.primary_edge_rotation)
+            rotations.add((edge_piece.primary_edge_rotation + 180) % 360)
+
+        # 3) Fallback safety net
+        if not rotations:
+            rotations = {0, 90, 180, 270}
+
+        rotations = list(rotations)
+
+
         
         best_placement = None
         best_score = current_score
@@ -626,142 +638,6 @@ class IterativeSolver:
             })
         
         return placements
-    
-    def _try_edge_placements(self, corner_placements, piece_shapes,
-                            target, puzzle_pieces, corner_piece_ids,
-                            num_attempts):
-        """Try multiple edge placement strategies."""
-        
-        best_score = -float('inf')
-        best_placement = None
-        
-        for attempt in range(num_attempts):
-            guesses = self._generate_guesses_for_corner_layout(
-                piece_shapes, corner_placements, target,
-                puzzle_pieces, corner_piece_ids, num_variations=5
-            )
-            
-            for guess in guesses:
-                self.all_guesses.append(guess)
-                rendered = self.renderer.render(guess, piece_shapes)
-                score = self.scorer.score(rendered, target)
-                self.all_scores.append(score)
-                
-                if score > best_score:
-                    best_score = score
-                    best_placement = guess
-        
-        return {'score': best_score, 'placement': best_placement}
-    
-    def _generate_guesses_for_corner_layout(self, piece_shapes, corner_placements,
-                                           target, all_pieces, corner_piece_ids,
-                                           num_variations):
-        """Generate guesses for a fixed corner layout by placing edges/centers."""
-        
-        import random
-        
-        height, width = target.shape
-        
-        # Separate pieces by type
-        edge_pieces = [p for p in all_pieces 
-                      if int(p.id) not in corner_piece_ids and p.piece_type == "edge"]
-        center_pieces = [p for p in all_pieces
-                        if int(p.id) not in corner_piece_ids and p.piece_type == "center"]
-        
-        print(f"      Generating guesses: {len(edge_pieces)} edges, {len(center_pieces)} centers")
-        
-        guesses = []
-        seen_signatures = set()
-        attempts = 0
-        max_attempts = num_variations * 10  # Try harder to find unique placements
-        
-        while len(guesses) < num_variations and attempts < max_attempts:
-            attempts += 1
-            guess = corner_placements.copy()
-            
-            # Place edges with varied strategies
-            edge_strategy = attempts % 4  # Rotate through 4 strategies
-            
-            for edge_idx, piece in enumerate(edge_pieces):
-                piece_id = int(piece.id)
-                
-                # Use piece's primary edge rotation if available
-                if piece.primary_edge_rotation is not None:
-                    base_rotation = piece.primary_edge_rotation
-                    theta = base_rotation + (edge_strategy * 90)  # Vary by strategy
-                else:
-                    theta = random.choice([0, 90, 180, 270])
-                
-                rotated = self._rotate_and_crop(piece_shapes[piece_id], theta)
-                piece_h, piece_w = rotated.shape
-                
-                # Use different placement strategies
-                if edge_strategy == 0:
-                    # Strategy 1: Edges along sides
-                    if edge_idx == 0:
-                        x = 0  # Left
-                        y = random.uniform(0, max(0, height - piece_h))
-                    else:
-                        x = max(0, width - piece_w)  # Right
-                        y = random.uniform(0, max(0, height - piece_h))
-                elif edge_strategy == 1:
-                    # Strategy 2: Edges top/bottom
-                    if edge_idx == 0:
-                        x = random.uniform(0, max(0, width - piece_w))
-                        y = 0  # Top
-                    else:
-                        x = random.uniform(0, max(0, width - piece_w))
-                        y = max(0, height - piece_h)  # Bottom
-                elif edge_strategy == 2:
-                    # Strategy 3: Diagonal positions
-                    x = random.uniform(0, max(0, width - piece_w))
-                    y = random.uniform(0, max(0, height - piece_h))
-                else:
-                    # Strategy 4: Center-biased
-                    center_x = (width - piece_w) / 2
-                    center_y = (height - piece_h) / 2
-                    x = center_x + random.uniform(-100, 100)
-                    y = center_y + random.uniform(-100, 100)
-                    x = max(0, min(width - piece_w, x))
-                    y = max(0, min(height - piece_h, y))
-                
-                guess.append({'piece_id': piece_id, 'x': x, 'y': y, 'theta': theta})
-            
-            # Place centers with variation
-            for center_idx, piece in enumerate(center_pieces):
-                piece_id = int(piece.id)
-                theta = random.choice([0, 90, 180, 270])
-                
-                rotated = self._rotate_and_crop(piece_shapes[piece_id], theta)
-                piece_h, piece_w = rotated.shape
-                
-                # Add noise to position based on attempt number
-                noise = (attempts % 10) * 10  # Vary noise by attempt
-                
-                x = random.uniform(0, max(0, width - piece_w)) + random.uniform(-noise, noise)
-                y = random.uniform(0, max(0, height - piece_h)) + random.uniform(-noise, noise)
-                
-                x = max(0, min(width - piece_w, x))
-                y = max(0, min(height - piece_h, y))
-                
-                guess.append({'piece_id': piece_id, 'x': x, 'y': y, 'theta': theta})
-            
-            guess.sort(key=lambda p: p['piece_id'])
-            
-            # Create signature for deduplication (round to nearest 10 pixels)
-            signature = tuple(sorted((p['piece_id'], 
-                                     round(p['x'] / 10), 
-                                     round(p['y'] / 10), 
-                                     p['theta']) for p in guess))
-            
-            if signature not in seen_signatures:
-                seen_signatures.add(signature)
-                guesses.append(guess)
-        
-        if len(guesses) < num_variations:
-            print(f"      Warning: Only generated {len(guesses)}/{num_variations} unique guesses")
-        
-        return guesses
     
     def _update_piece_poses(self, puzzle_pieces, placements):
         """Update PuzzlePiece objects with place_pose."""
