@@ -393,13 +393,13 @@ class PieceAnalyzer:
         extends_down = max_y - corner_y_rot    # Should be ~0 (bad if large)
         
         # Calculate overhang in "wrong" directions
-        max_allowed_overhang = 5  # pixels (very strict)
+        max_allowed_overhang = 3
         
         right_overhang = max(0, extends_right - max_allowed_overhang)
         down_overhang = max(0, extends_down - max_allowed_overhang)
         
         # Also penalize if doesn't extend enough in "good" directions
-        min_required_extent = 20  # Should extend at least 20px left and up
+        min_required_extent = 50 
         
         left_deficit = max(0, min_required_extent - extends_left)
         up_deficit = max(0, min_required_extent - extends_up)

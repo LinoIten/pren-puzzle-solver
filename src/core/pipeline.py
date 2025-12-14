@@ -33,6 +33,8 @@ class PipelineResult:
     message: str
     solution: Optional[dict] = None
 
+# constants
+SCORE_THRESHOLD = 210000.0
 
 class PuzzlePipeline:
     """
@@ -233,6 +235,8 @@ class PuzzlePipeline:
             scorer=self.scorer,
             guess_generator=self.guess_generator
         )
+
+
         
         # Create initial placements from PuzzlePiece objects
         initial_placements = self._create_initial_placements_from_pieces(puzzle_pieces)
@@ -242,7 +246,7 @@ class PuzzlePipeline:
             piece_shapes=piece_shapes,
             target=target,
             puzzle_pieces=puzzle_pieces,  
-            score_threshold=220000.0
+            score_threshold=SCORE_THRESHOLD
         )
         if not solution.success:
             self.logger.warning("  ! Keine gute Loesung gefunden")
@@ -281,7 +285,7 @@ class PuzzlePipeline:
                         y=placement['y'],
                         theta=placement['theta']
                     )
-                    piece.confidence = 1.0 if solution.score > 220000 else 0.5
+                    piece.confidence = 1.0 if solution.score > SCORE_THRESHOLD else 0.5
                     self.logger.debug(f"    Piece {piece_id}: {piece.place_pose}")
                     break
         

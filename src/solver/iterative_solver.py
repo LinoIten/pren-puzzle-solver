@@ -2,23 +2,19 @@
 Iterative solver with MODE SWITCHING
 Switches between CORNER_SEARCH and EDGE_REFINEMENT modes adaptively.
 """
-
 from typing import Dict, List, Optional
 import cv2
 import numpy as np
 from dataclasses import dataclass
 from enum import Enum
-
 from src.solver.corner_fitter import CornerFit, CornerFitter
 from src.utils.pose import Pose
 from src.utils.puzzle_piece import PuzzlePiece
-
 
 class SolverMode(Enum):
     """Solver operating modes."""
     CORNER_SEARCH = "corner_search"      # Rapidly evaluate corner layouts
     EDGE_REFINEMENT = "edge_refinement"  # Adaptive edge placement for best corners
-
 
 @dataclass
 class IterativeSolution:
@@ -31,7 +27,6 @@ class IterativeSolution:
     total_iterations: int
     all_guesses: Optional[List[List[dict]]] = None
 
-
 @dataclass
 class SolverState:
     """Tracks solver state across mode switches."""
@@ -42,7 +37,6 @@ class SolverState:
     iterations_since_improvement: int
     current_corner_rank: int  # Which corner layout we're currently refining
     refinement_attempts: int  # How many refinement attempts on current corner
-
 
 class IterativeSolver:
     """
@@ -57,7 +51,6 @@ class IterativeSolver:
     - Switches to EDGE_REFINEMENT when promising corners are found
     - Switches back to CORNER_SEARCH if refinement plateaus
     """
-
     def __init__(self, renderer, scorer, guess_generator):
         self.renderer = renderer
         self.scorer = scorer
@@ -70,35 +63,17 @@ class IterativeSolver:
                           piece_shapes: Dict[int, np.ndarray],
                           target: np.ndarray,
                           puzzle_pieces: list,
-                          score_threshold: float = 220000.0,
-                          min_acceptable_score: float = 50000.0,
-                          max_corner_combos: int = 1000,
-                          mode_switching: bool = True,
-                          initial_corner_count: int = 60,  # NEW: How many corners to evaluate upfront
-                          max_corners_to_refine: int = 10,  # NEW: Max corners to try edge refinement on
+                          score_threshold: float,
+                          initial_corner_count: int = 60,  
+                          max_corners_to_refine: int = 10,  
                           refinement_patience: int = 5,
                           max_iterations: int = 500) -> IterativeSolution:
         """
-        Solve puzzle with optional mode switching.
-        
-        NEW APPROACH:
         1. Evaluate many corners upfront (e.g., 100)
         2. Pick top N corners (e.g., top 10)  
         3. Do edge refinement on each
         4. Switch to next corner when stuck
-        
-        Args:
-            mode_switching: Enable adaptive mode switching (recommended)
-            initial_corner_count: How many corners to evaluate before refinement (default: 100)
-            max_corners_to_refine: Max corners to try edge refinement on (default: 10)
-            refinement_patience: Refinement attempts before moving to next corner (default: 5)
-            max_iterations: Maximum total iterations across all modes
         """
-        
-        print("\n🔄 Starting iterative solving...")
-        print(f"  Mode switching: {'ENABLED' if mode_switching else 'DISABLED'}")
-        if mode_switching:
-            print(f"  Config: {initial_corner_count} corners → refine top {max_corners_to_refine}, patience={refinement_patience}")
         
         height, width = target.shape
         self.corner_fitter = CornerFitter(width=width, height=height)
@@ -138,9 +113,6 @@ class IterativeSolver:
                 corner_pieces = corner_pieces[:4]
         
         # Generate combinations:
-        # 1. All permutations of which piece goes in which corner position
-        # 2. For each permutation, try different corner rotations for each piece
-        
         import itertools
         
         # Step 1: Permutations of pieces (which piece in which corner)
@@ -175,9 +147,6 @@ class IterativeSolver:
         
         all_corner_combinations.sort(key=combo_quality, reverse=True)
         
-        if len(all_corner_combinations) > max_corner_combos:
-            all_corner_combinations = all_corner_combinations[:max_corner_combos]
-        
         print(f"  Total corner combinations: {len(all_corner_combinations)}")
         
         # Show piece distribution for verification
@@ -189,27 +158,20 @@ class IterativeSolver:
         print(f"     Edges (→ placed along sides):   {[int(p.id) for p in all_edge_pieces]}")
         print(f"     Centers (→ placed in middle):   {[int(p.id) for p in all_center_pieces]}")
         
-        # Solve with chosen mode
-        if mode_switching:
-            return self._solve_with_mode_switching(
-                corner_pieces, all_corner_combinations, piece_shapes,
-                target, puzzle_pieces, score_threshold, min_acceptable_score,
-                initial_corner_count, max_corners_to_refine, 
-                refinement_patience, max_iterations
-            )
-        else:
-            return self._solve_classic(
-                corner_pieces, all_corner_combinations, piece_shapes,
-                target, puzzle_pieces, score_threshold, min_acceptable_score
-            )
+        return self._solve_with_mode_switching(
+            corner_pieces, all_corner_combinations, piece_shapes,
+            target, puzzle_pieces, score_threshold,
+            initial_corner_count, max_corners_to_refine, 
+            refinement_patience, max_iterations
+        )
     
     def _solve_with_mode_switching(self,
                                    corner_pieces, all_corner_combinations,
                                    piece_shapes, target, puzzle_pieces,
-                                   score_threshold, min_acceptable_score,
+                                   score_threshold,
                                    initial_corner_count, max_corners_to_refine,
                                    refinement_patience, max_iterations) -> IterativeSolution:
-        """Main mode-switching solve loop."""
+        """Main mode-switching solve loop with proper iteration through corner layouts."""
         
         # ========================================================================
         # PHASE 1: EVALUATE MANY CORNERS FIRST (no edge refinement yet!)
@@ -264,31 +226,96 @@ class IterativeSolver:
         print(f"\n  Score range: {worst_in_top10:.1f} → {best_corner_score:.1f}")
         
         # ========================================================================
-        # PHASE 2: SMART EDGE PLACEMENT
+        # PHASE 2: ITERATE THROUGH CORNER LAYOUTS WITH SMART EDGE PLACEMENT
         # ========================================================================
-        print(f"\n  === PHASE 2: Smart edge placement ===")
+        print(f"\n  === PHASE 2: Iterate through corner layouts with edge placement ===")
+        print(f"  Will try up to {max_corners_to_refine} corner layouts until score >= {score_threshold}")
         
-        # Get best corner layout
-        _, best_piece_perm, best_rotation_indices, best_corner_placements, corner_only_score = corner_evaluations[0]
+        best_overall_score = -float('inf')
+        best_overall_solution = None
+        layouts_tried = 0
         
-        print(f"  Starting with best corner layout: pieces {[int(p.id) for p in best_piece_perm]}")
-        print(f"  Corner-only score: {corner_only_score:.1f}")
+        # Try multiple corner layouts
+        corners_to_try = min(max_corners_to_refine, len(corner_evaluations))
+        
+        for layout_idx in range(corners_to_try):
+            _, current_piece_perm, current_rotation_indices, current_corner_placements, corner_only_score = corner_evaluations[layout_idx]
+            layouts_tried += 1
+            
+            print(f"\n  → Layout {layout_idx + 1}/{corners_to_try}: Pieces {[int(p.id) for p in current_piece_perm]}")
+            print(f"    Corner-only score: {corner_only_score:.1f}")
+            
+            # Try edge placement on this corner layout
+            solution_with_edges = self._try_edge_placement_on_corners(
+                corner_pieces=current_piece_perm,
+                corner_placements=current_corner_placements,
+                corner_only_score=corner_only_score,
+                piece_shapes=piece_shapes,
+                target=target,
+                puzzle_pieces=puzzle_pieces,
+                layout_number=layout_idx + 1
+            )
+            
+            final_score = solution_with_edges['final_score']
+            final_placements = solution_with_edges['final_placements']
+            
+            print(f"    Final score with edges: {final_score:.1f} ({final_score - corner_only_score:+.1f})")
+            
+            # Track best solution
+            if final_score > best_overall_score:
+                best_overall_score = final_score
+                best_overall_solution = final_placements
+                print(f"    ✓ NEW BEST SOLUTION! Score: {final_score:.1f}")
+            
+            # Check if we've reached the threshold
+            if final_score >= score_threshold:
+                print(f"\n🎯 THRESHOLD REACHED! Score {final_score:.1f} >= {score_threshold}")
+                print(f"   Used layout {layout_idx + 1}/{corners_to_try}")
+                break
+        
+        print(f"\n🏆 Final Results:")
+        print(f"   Best score: {best_overall_score:.1f}")
+        print(f"   Layouts tried: {layouts_tried}/{corners_to_try}")
+        print(f"   Success: {best_overall_score >= score_threshold}")
+        print(f"   Total guesses: {len(self.all_guesses)}")
+        
+        # Update piece poses with best solution
+        self._update_piece_poses(puzzle_pieces, best_overall_solution)
+        
+        return IterativeSolution(
+            success=best_overall_score >= score_threshold,
+            anchor_fit=None,
+            remaining_placements=best_overall_solution,
+            score=best_overall_score,
+            iteration=initial_corners_to_evaluate + layouts_tried,
+            total_iterations=len(all_corner_combinations),
+            all_guesses=self.all_guesses
+        )
+    
+    def _try_edge_placement_on_corners(self,
+                                       corner_pieces,
+                                       corner_placements,
+                                       corner_only_score,
+                                       piece_shapes,
+                                       target,
+                                       puzzle_pieces,
+                                       layout_number) -> dict:
+        """Try smart edge placement on a specific corner layout."""
         
         # Get edge and center pieces
-        corner_piece_ids = {int(p.id) for p in best_piece_perm}
+        corner_piece_ids = {int(p.id) for p in corner_pieces}
         edge_pieces = [p for p in puzzle_pieces if p.piece_type == "edge" and int(p.id) not in corner_piece_ids]
         center_pieces = [p for p in puzzle_pieces if p.piece_type == "center" and int(p.id) not in corner_piece_ids]
         
-        print(f"  Edge pieces to place: {[int(p.id) for p in edge_pieces]}")
-        print(f"  Center pieces to place: {[int(p.id) for p in center_pieces]}")
+        print(f"    Edge pieces to place: {[int(p.id) for p in edge_pieces]}")
         
         # Start with corner placements
-        current_placements = best_corner_placements.copy()
+        current_placements = corner_placements.copy()
         current_score = corner_only_score
         
         # Place each edge piece intelligently
         for edge_piece in edge_pieces:
-            print(f"\n  → Placing edge piece {edge_piece.id}...")
+            print(f"      → Placing edge piece {edge_piece.id}...")
             
             best_placement = self._find_best_edge_placement(
                 edge_piece=edge_piece,
@@ -311,10 +338,10 @@ class IterativeSolver:
                 self.all_guesses.append(current_placements.copy())
                 self.all_scores.append(new_score)
                 
-                print(f"    ✓ Placed on {best_placement['side']} at ({best_placement['x']:.0f}, {best_placement['y']:.0f})")
-                print(f"    Score: {new_score:.1f} ({improvement:+.1f})")
+                print(f"        ✓ Placed on {best_placement['side']} at ({best_placement['x']:.0f}, {best_placement['y']:.0f})")
+                print(f"        Score: {new_score:.1f} ({improvement:+.1f})")
             else:
-                print(f"    ⚠️  Could not find good placement for piece {edge_piece.id}")
+                print(f"        ⚠️  Could not find good placement for piece {edge_piece.id}")
         
         # Place center pieces (simple for now - just random)
         import random
@@ -337,22 +364,11 @@ class IterativeSolver:
         self.all_guesses.append(current_placements.copy())
         self.all_scores.append(final_score)
         
-        print(f"\n🏆 Final score: {final_score:.1f}")
-        print(f"   Improvement over corners: {final_score - corner_only_score:+.1f}")
-        print(f"📊 Total guesses: {len(self.all_guesses)}")
-        
-        # Update piece poses
-        self._update_piece_poses(puzzle_pieces, current_placements)
-        
-        return IterativeSolution(
-            success=final_score >= min_acceptable_score,
-            anchor_fit=None,
-            remaining_placements=current_placements,
-            score=final_score,
-            iteration=initial_corners_to_evaluate + len(edge_pieces),
-            total_iterations=len(all_corner_combinations),
-            all_guesses=self.all_guesses
-        )
+        return {
+            'final_score': final_score,
+            'final_placements': current_placements,
+            'improvement': final_score - corner_only_score
+        }
     
     def _find_best_edge_placement(self,
                                   edge_piece: PuzzlePiece,
@@ -379,25 +395,20 @@ class IterativeSolver:
         ]
         
         rotations = set()
-
         # 2) Add primary rotation if this piece belongs on this side
         if edge_piece.primary_edge_rotation is not None:
             rotations.add(edge_piece.primary_edge_rotation)
             rotations.add((edge_piece.primary_edge_rotation + 180) % 360)
-
         # 3) Fallback safety net
         if not rotations:
             rotations = {0, 90, 180, 270}
-
         rotations = list(rotations)
-
-
         
         best_placement = None
         best_score = current_score
         
         for side_name in sides:
-            print(f"    Trying {side_name} side...")
+            print(f"        Trying {side_name} side...")
             
             side_best_score = current_score
             side_best_placement = None
@@ -448,16 +459,15 @@ class IterativeSolver:
                     side_best_placement = test_placement.copy()
                     side_best_placement['axis_type'] = axis_type
             
-            print(f"      Best rotation: θ={side_best_placement['theta'] if side_best_placement else 'N/A'}°, score={side_best_score:.1f}")
+            print(f"          Best rotation: θ={side_best_placement['theta'] if side_best_placement else 'N/A'}°, score={side_best_score:.1f}")
             
             # If no improvement on this side, skip sliding
             if side_best_score <= current_score:
-                print(f"      → No improvement, skip {side_name}")
+                print(f"          → No improvement, skip {side_name}")
                 continue
             
             # This side improved! Slide along axis to optimize
-            print(f"      → {side_name} improved! Sliding to optimize...")
-            print(f"      → {side_name} improved! Sliding to optimize...")
+            print(f"          → {side_name} improved! Sliding to optimize...")
             
             optimized = self._slide_along_axis(
                 piece_id=piece_id,
@@ -472,7 +482,7 @@ class IterativeSolver:
             if optimized['score'] > best_score:
                 best_score = optimized['score']
                 best_placement = optimized['placement']
-                print(f"      → Optimized score: {best_score:.1f}")
+                print(f"          → Optimized score: {best_score:.1f}")
         
         return best_placement
     
@@ -543,7 +553,7 @@ class IterativeSolver:
     
     def _solve_classic(self, corner_pieces, all_corner_combinations,
                       piece_shapes, target, puzzle_pieces,
-                      score_threshold, min_acceptable_score) -> IterativeSolution:
+                      score_threshold) -> IterativeSolution:
         """Classic approach: evaluate all corners, return best (no edges for now)."""
         
         print("\n  === Evaluating all corners (classic mode - corners only) ===")
@@ -589,7 +599,7 @@ class IterativeSolver:
         self._update_piece_poses(puzzle_pieces, best_placements)
         
         return IterativeSolution(
-            success=best_score >= min_acceptable_score,
+            success=best_score >= score_threshold,
             anchor_fit=None,
             remaining_placements=best_placements,
             score=best_score,
