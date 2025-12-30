@@ -30,12 +30,12 @@ class PieceAnalyzer:
     # Detection thresholds
     MIN_EDGE_LENGTH = 25
     MIN_EDGE_STRAIGHTNESS = 0.65
-    MIN_EDGE_SCORE = 0.4
+    MIN_EDGE_SCORE = 0.5
     
     # Corner detection thresholds (from your existing code)
-    ANGLE_TOL = 7
+    ANGLE_TOL = 6
     MIN_CORNER_STRAIGHTNESS = 0.9
-    MIN_CORNER_EDGE_LENGTH = 10
+    MIN_CORNER_EDGE_LENGTH = 20
     
     @staticmethod
     def analyze_all_pieces(puzzle_pieces: List[PuzzlePiece], 
@@ -68,6 +68,56 @@ class PieceAnalyzer:
                 print(f"  [+] Piece {piece_id}: EDGE ({len(piece.corners)} corner(s), {len(piece.edges)} edge(s))")
             else:
                 print(f"  [o] Piece {piece_id}: CENTER ({len(piece.corners)} corner(s), {len(piece.edges)} edge(s))")
+                
+        print(f"\n[RE-EVALUATION] Checking corner piece categorization...")
+            
+        # Find all pieces currently classified as "corner"
+        corner_pieces = [p for p in puzzle_pieces if p.piece_type == "corner"]
+        
+        if len(corner_pieces) <= 4:
+            print(f"  ✅ Corner count OK: {len(corner_pieces)} pieces")
+        else:
+            print(f"  ⚠️  Too many corner pieces: {len(corner_pieces)} > 4")
+            print(f"      Re-evaluating based on corner quality scores...")
+            
+            # Score each corner piece by their best corner quality
+            corner_scores = []
+            for piece in corner_pieces:
+                if piece.corners:
+                    best_corner_quality = max(corner.quality for corner in piece.corners)
+                    total_corner_quality = sum(corner.quality for corner in piece.corners)
+                    corner_scores.append((piece, best_corner_quality, total_corner_quality, len(piece.corners)))
+                else:
+                    # Shouldn't happen, but handle it
+                    corner_scores.append((piece, 0.0, 0.0, 0))
+            
+            # Sort by: 1) total corner quality, 2) number of corners, 3) best corner quality
+            corner_scores.sort(key=lambda x: (x[2], x[3], x[1]), reverse=True)
+            
+            print(f"      Corner piece rankings:")
+            for i, (piece, best_qual, total_qual, count) in enumerate(corner_scores):
+                print(f"        {i+1}. Piece {piece.id}: {count} corners, total_quality={total_qual:.2f}, best={best_qual:.2f}")
+            
+            # Keep top 4 as corners, demote the rest to edges
+            true_corners = corner_scores[:4]
+            demoted_pieces = corner_scores[4:]
+            
+            for piece, _, _, _ in demoted_pieces:
+                old_type = piece.piece_type
+                piece.piece_type = "edge"
+                print(f"        📉 Demoted piece {piece.id}: {old_type} → edge")
+            
+            print(f"  ✅ Final corner pieces: {[int(p[0].id) for p in true_corners]}")
+            
+        # Final summary
+        final_corners = [p for p in puzzle_pieces if p.piece_type == "corner"]
+        final_edges = [p for p in puzzle_pieces if p.piece_type == "edge"] 
+        final_centers = [p for p in puzzle_pieces if p.piece_type == "center"]
+        
+        print(f"\n[FINAL SUMMARY]")
+        print(f"  Corner pieces: {len(final_corners)} - {[int(p.id) for p in final_corners]}")
+        print(f"  Edge pieces:   {len(final_edges)} - {[int(p.id) for p in final_edges]}")
+        print(f"  Center pieces: {len(final_centers)} - {[int(p.id) for p in final_centers]}")
     
     @staticmethod
     def analyze_piece(piece: PuzzlePiece, mask: np.ndarray) -> None:
@@ -282,7 +332,6 @@ class PieceAnalyzer:
             raw_rotation = (target_bisector - bisector_angle) % 360
             rotation_to_align = -(raw_rotation + 90)
             
-            # NEW: Check boundary overhang
             # Would this corner cause the piece to extend beyond puzzle boundaries?
             overhang_penalty = PieceAnalyzer._calculate_corner_overhang(
                 mask, p_curr, rotation_to_align, piece_center
@@ -393,13 +442,13 @@ class PieceAnalyzer:
         extends_down = max_y - corner_y_rot    # Should be ~0 (bad if large)
         
         # Calculate overhang in "wrong" directions
-        max_allowed_overhang = 3
+        max_allowed_overhang = 20
         
         right_overhang = max(0, extends_right - max_allowed_overhang)
         down_overhang = max(0, extends_down - max_allowed_overhang)
         
         # Also penalize if doesn't extend enough in "good" directions
-        min_required_extent = 50 
+        min_required_extent = 60 
         
         left_deficit = max(0, min_required_extent - extends_left)
         up_deficit = max(0, min_required_extent - extends_up)
