@@ -47,7 +47,7 @@ class PieceAnalyzer:
             puzzle_pieces: List of PuzzlePiece objects to enrich
             piece_shapes: Dict mapping piece_id to binary mask
         """
-        print("\n🔍 Analyzing all pieces for corners and edges...")
+        print("\n[ANALYSIS] Analyzing all pieces for corners and edges...")
         
         for piece in puzzle_pieces:
             piece_id = int(piece.id)
@@ -63,11 +63,11 @@ class PieceAnalyzer:
             
             # Print summary
             if piece.piece_type == "corner":
-                print(f"  ✓ Piece {piece_id}: CORNER ({len(piece.corners)} corner(s), {len(piece.edges)} edge(s))")
+                print(f"  [+] Piece {piece_id}: CORNER ({len(piece.corners)} corner(s), {len(piece.edges)} edge(s))")
             elif piece.piece_type == "edge":
-                print(f"  ✓ Piece {piece_id}: EDGE ({len(piece.corners)} corner(s), {len(piece.edges)} edge(s))")
+                print(f"  [+] Piece {piece_id}: EDGE ({len(piece.corners)} corner(s), {len(piece.edges)} edge(s))")
             else:
-                print(f"  ○ Piece {piece_id}: CENTER ({len(piece.corners)} corner(s), {len(piece.edges)} edge(s))")
+                print(f"  [o] Piece {piece_id}: CENTER ({len(piece.corners)} corner(s), {len(piece.edges)} edge(s))")
     
     @staticmethod
     def analyze_piece(piece: PuzzlePiece, mask: np.ndarray) -> None:
@@ -418,7 +418,7 @@ class PieceAnalyzer:
         
         # DEBUG OUTPUT
         if total_penalty > 0.1:  # Only show problematic corners
-            print(f"      🔍 Overhang check at ({corner_x}, {corner_y}), rot={rotation:.1f}°:")
+            print(f"      [CHECK] Overhang check at ({corner_x}, {corner_y}), rot={rotation:.1f}:")
             print(f"         Extends: L={extends_left}px, R={extends_right}px, U={extends_up}px, D={extends_down}px")
             print(f"         Overhang: right={right_overhang}px, down={down_overhang}px")
             print(f"         Deficit: left={left_deficit}px, up={up_deficit}px")

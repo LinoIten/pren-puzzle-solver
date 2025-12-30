@@ -49,10 +49,11 @@ class PuzzlePipeline:
     6. (PREN2) Hardware-Steuerung
     """
 
-    def __init__(self, config: Config, show_ui: bool = False):
+    def __init__(self, config: Config, show_ui: bool = False, puzzle_dir: str = None):
         self.config = config
         self.logger = setup_logger("pipeline")
         self.show_ui = show_ui
+        self.puzzle_dir = puzzle_dir  # Directory containing a saved puzzle
         
         # Initialize solver components - renderer will be created with target
         self.guess_generator = GuessGenerator(rotation_step=90)
@@ -117,11 +118,18 @@ class PuzzlePipeline:
             )
     
     def _process_vision(self):
-        """Bildverarbeitung"""
+        """Bildverarbeitung - load and analyze puzzle pieces"""
         self.logger.info("  → Bildaufnahme...")
         
+        # Determine which directory to use
+        if self.puzzle_dir:
+            output_dir = self.puzzle_dir
+            self.logger.info(f"  → Loading puzzle from: {output_dir}")
+        else:
+            output_dir = "data/mock_pieces"
+            self.logger.info(f"  → Using default directory: {output_dir}")
         
-        generator = MockPuzzleGenerator(output_dir="data/mock_pieces")
+        generator = MockPuzzleGenerator(output_dir=output_dir)
         
         # Check if we already have saved pieces
         all_piece_files = list(generator.output_dir.glob("piece_*.png"))
@@ -129,18 +137,16 @@ class PuzzlePipeline:
         
         puzzle_pieces = []
         
-        if not existing_pieces or self.config.vision.regenerate_mock:
+        if not existing_pieces or (not self.puzzle_dir and self.config.vision.regenerate_mock):
+            # Only regenerate if not using a specific puzzle_dir and regenerate flag is set
             self.logger.info("  → Generiere Mock-Puzzle...")
             
             # Generate new puzzle WITH positions - returns PuzzlePiece objects
             full_image, piece_images, debug_image, puzzle_pieces = generator.generate_puzzle_with_positions()
             
-            # Save pieces
-            piece_paths = generator.save_pieces(piece_images)
-            
             # Save debug image
-            cv2.imwrite("data/mock_pieces/debug_cuts.png", debug_image)
-            self.logger.info("  → Mock-Puzzle gespeichert in data/mock_pieces/")
+            cv2.imwrite(str(generator.output_dir / "debug_cuts.png"), debug_image)
+            self.logger.info(f"  → Mock-Puzzle gespeichert in {generator.output_dir}")
         else:
             self.logger.info(f"  → Lade {len(existing_pieces)} existierende Mock-Teile...")
             
@@ -181,6 +187,7 @@ class PuzzlePipeline:
         
         piece_ids, piece_shapes = generator.load_pieces_for_solver()
 
+        # NOW analyze the pieces (this is where the analysis happens)
         PieceAnalyzer.analyze_all_pieces(puzzle_pieces, piece_shapes)
 
         # Print analysis results
@@ -192,13 +199,13 @@ class PuzzlePipeline:
         edge_count = sum(1 for p in puzzle_pieces if p.piece_type == "edge")
         center_count = sum(1 for p in puzzle_pieces if p.piece_type == "center")
 
-        self.logger.info(f"\n📊 Classification:")
+        self.logger.info(f"\n[STATS] Classification:")
         self.logger.info(f"    Corner pieces: {corner_count}")
         self.logger.info(f"    Edge pieces: {edge_count}")
         self.logger.info(f"    Center pieces: {center_count}")
 
         # Save visualizations
-        debug_dir = "data/mock_pieces/debug"
+        debug_dir = generator.output_dir / "debug"
         os.makedirs(debug_dir, exist_ok=True)
 
         for piece in puzzle_pieces:
@@ -206,7 +213,7 @@ class PuzzlePipeline:
             if piece_id in piece_shapes:
                 self.logger.info(f"\n{piece.summary()}")
                 vis = PieceAnalyzer.visualize_corners(piece_shapes[piece_id], piece)
-                cv2.imwrite(f"{debug_dir}/piece_{piece_id}_analysis.png", vis)
+                cv2.imwrite(str(debug_dir / f"piece_{piece_id}_analysis.png"), vis)
 
         self.logger.info(f"\n  → {len(piece_ids)} Teile geladen und analysiert")
         self.logger.info("="*80 + "\n")

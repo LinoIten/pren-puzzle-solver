@@ -132,6 +132,7 @@ class MockPuzzleGenerator:
         """
         Generate a puzzle and assign initial positions in A5 source area.
         Places pieces in corners to avoid overlap.
+        Saves pieces to disk automatically.
         
         Returns:
             (full_image, piece_images, debug_image, puzzle_pieces)
@@ -555,15 +556,15 @@ class MockPuzzleGenerator:
             if area > min_area_threshold:
                 mask = (labels == label).astype(np.uint8) * 255
                 masks.append(mask)
-                print(f"    ✓ Kept region {label}")
+                print(f"    [+] Kept region {label}")
             else:
-                print(f"    ✗ Rejected region {label} (too small)")
+                print(f"    [-] Rejected region {label} (too small)")
         
         print(f"\nCreated {len(masks)} pieces from {self.num_cuts} cuts (expected {expected_pieces})")
         
         # Add assertion to catch unexpected piece counts
         if len(masks) != expected_pieces:
-            print(f"⚠️  WARNING: Expected {expected_pieces} pieces but got {len(masks)}!")
+            print(f"[!] WARNING: Expected {expected_pieces} pieces but got {len(masks)}!")
             
             # Save debug image to see what's happening
             debug_path = self.output_dir / "debug_cut_regions.png"
