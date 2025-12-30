@@ -128,24 +128,24 @@ class PuzzleThumbnail(Image):
                 thumbnail = cv2.resize(rendered_color, (120, 120))
 
                 # Add "SOLVED" indicator
-                cv2.putText(
-                    thumbnail,
-                    "SOLVED",
-                    (5, 15),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.4,
-                    (0, 255, 0),
-                    1,
-                )
-                cv2.putText(
-                    thumbnail,
-                    f"#{self.puzzle_data.get('id', '?')}",
-                    (5, 110),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.4,
-                    (255, 255, 255),
-                    1,
-                )
+                # cv2.putText(
+                #     thumbnail,
+                #     "SOLVED",
+                #     (5, 15),
+                #     cv2.FONT_HERSHEY_SIMPLEX,
+                #     0.4,
+                #     (0, 255, 0),
+                #     1,
+                # )
+                # cv2.putText(
+                #     thumbnail,
+                #     f"#{self.puzzle_data.get('id', '?')}",
+                #     (5, 110),
+                #     cv2.FONT_HERSHEY_SIMPLEX,
+                #     0.4,
+                #     (255, 255, 255),
+                #     1,
+                # )
 
                 # Save and load
                 temp_path = f"temp/solved_thumb_{self.puzzle_data.get('id', 0)}.png"
@@ -171,24 +171,24 @@ class PuzzleThumbnail(Image):
                     thumbnail = cv2.resize(debug_img, (120, 120))
 
                     # Add "UNSOLVED" indicator
-                    cv2.putText(
-                        thumbnail,
-                        "UNSOLVED",
-                        (2, 15),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        0.35,
-                        (0, 0, 255),
-                        1,
-                    )
-                    cv2.putText(
-                        thumbnail,
-                        f"#{self.puzzle_data.get('id', '?')}",
-                        (5, 110),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        0.4,
-                        (255, 255, 255),
-                        1,
-                    )
+                    # cv2.putText(
+                    #     thumbnail,
+                    #     "UNSOLVED",
+                    #     (2, 15),
+                    #     cv2.FONT_HERSHEY_SIMPLEX,
+                    #     0.35,
+                    #     (0, 0, 255),
+                    #     1,
+                    # )
+                    # cv2.putText(
+                    #     thumbnail,
+                    #     f"#{self.puzzle_data.get('id', '?')}",
+                    #     (5, 110),
+                    #     cv2.FONT_HERSHEY_SIMPLEX,
+                    #     0.4,
+                    #     (255, 255, 255),
+                    #     1,
+                    # )
 
                     # Save and load
                     temp_path = (
@@ -228,24 +228,24 @@ class PuzzleThumbnail(Image):
                                 )
 
                 # Add labels
-                cv2.putText(
-                    thumbnail,
-                    "UNSOLVED",
-                    (2, 15),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.35,
-                    (0, 0, 255),
-                    1,
-                )
-                cv2.putText(
-                    thumbnail,
-                    f"#{self.puzzle_data.get('id', '?')}",
-                    (5, 110),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.4,
-                    (0, 0, 0),
-                    1,
-                )
+                # cv2.putText(
+                #     thumbnail,
+                #     "UNSOLVED",
+                #     (2, 15),
+                #     cv2.FONT_HERSHEY_SIMPLEX,
+                #     0.35,
+                #     (0, 0, 255),
+                #     1,
+                # )
+                # cv2.putText(
+                #     thumbnail,
+                #     f"#{self.puzzle_data.get('id', '?')}",
+                #     (5, 110),
+                #     cv2.FONT_HERSHEY_SIMPLEX,
+                #     0.4,
+                #     (0, 0, 0),
+                #     1,
+                # )
 
                 # Save and load
                 temp_path = f"temp/unsolved_thumb_{self.puzzle_data.get('id', 0)}.png"

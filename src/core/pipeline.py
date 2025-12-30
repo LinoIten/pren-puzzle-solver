@@ -248,7 +248,6 @@ class PuzzlePipeline:
         # Create initial placements from PuzzlePiece objects
         initial_placements = self._create_initial_placements_from_pieces(puzzle_pieces)
         
-        # Solve iteratively - THIS CALL STAYS THE SAME
         solution = iterative_solver.solve_iteratively(
             piece_shapes=piece_shapes,
             target=target,

@@ -26,7 +26,7 @@ class MockPuzzleGenerator:
         self.a5_width = 840
         self.a5_height = 594
 
-        self.num_cuts = random.choice([2, 3])
+        self.num_cuts = 3 #random.choice([2, 3])
 
         # Store piece positions (will be filled during save_pieces)
         self.piece_positions = {}

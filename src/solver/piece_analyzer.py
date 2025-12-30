@@ -28,14 +28,14 @@ class PieceAnalyzer:
     """
     
     # Detection thresholds
-    MIN_EDGE_LENGTH = 30
+    MIN_EDGE_LENGTH = 25
     MIN_EDGE_STRAIGHTNESS = 0.65
     MIN_EDGE_SCORE = 0.4
     
     # Corner detection thresholds (from your existing code)
-    ANGLE_TOL = 8
+    ANGLE_TOL = 7
     MIN_CORNER_STRAIGHTNESS = 0.9
-    MIN_CORNER_EDGE_LENGTH = 25
+    MIN_CORNER_EDGE_LENGTH = 10
     
     @staticmethod
     def analyze_all_pieces(puzzle_pieces: List[PuzzlePiece], 
