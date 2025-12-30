@@ -7,7 +7,7 @@ __pycache__/
 *.so
 
 data/
-temp_*
+temp/
 # Distribution / packaging
 .Python
 build/

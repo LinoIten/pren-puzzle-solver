@@ -148,7 +148,7 @@ class PuzzleThumbnail(Image):
                 )
 
                 # Save and load
-                temp_path = f"temp_solved_thumb_{self.puzzle_data.get('id', 0)}.png"
+                temp_path = f"temp/solved_thumb_{self.puzzle_data.get('id', 0)}.png"
                 cv2.imwrite(temp_path, thumbnail)
                 self.source = temp_path
             else:
@@ -192,7 +192,7 @@ class PuzzleThumbnail(Image):
 
                     # Save and load
                     temp_path = (
-                        f"temp_unsolved_thumb_{self.puzzle_data.get('id', 0)}.png"
+                        f"temp/unsolved_thumb_{self.puzzle_data.get('id', 0)}.png"
                     )
                     cv2.imwrite(temp_path, thumbnail)
                     self.source = temp_path
@@ -248,7 +248,7 @@ class PuzzleThumbnail(Image):
                 )
 
                 # Save and load
-                temp_path = f"temp_unsolved_thumb_{self.puzzle_data.get('id', 0)}.png"
+                temp_path = f"temp/unsolved_thumb_{self.puzzle_data.get('id', 0)}.png"
                 cv2.imwrite(temp_path, thumbnail)
                 self.source = temp_path
             else:
@@ -271,7 +271,7 @@ class PuzzleThumbnail(Image):
                 (0, 0, 0),
                 2,
             )
-            temp_path = f"temp_thumb_{self.puzzle_data.get('id', 0)}.png"
+            temp_path = f"temp/thumb_{self.puzzle_data.get('id', 0)}.png"
             cv2.imwrite(temp_path, placeholder)
             self.source = temp_path
         except Exception as e:
