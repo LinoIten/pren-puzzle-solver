@@ -49,7 +49,7 @@ class PuzzlePipeline:
     6. (PREN2) Hardware-Steuerung
     """
 
-    def __init__(self, config: Config, show_ui: bool = False, puzzle_dir: str = None):
+    def __init__(self, config: Config, show_ui: bool = False, puzzle_dir: str | None = None):
         self.config = config
         self.logger = setup_logger("pipeline")
         self.show_ui = show_ui
