@@ -28,12 +28,12 @@ class PieceAnalyzer:
     """
     
     # Detection thresholds
-    MIN_EDGE_LENGTH = 30
-    MIN_EDGE_STRAIGHTNESS = 0.65
-    MIN_EDGE_SCORE = 0.4
+    MIN_EDGE_LENGTH = 15
+    MIN_EDGE_STRAIGHTNESS = 0.75
+    MIN_EDGE_SCORE = 0.3
     
     # Corner detection thresholds (from your existing code)
-    ANGLE_TOL = 8
+    ANGLE_TOL = 6
     MIN_CORNER_STRAIGHTNESS = 0.9
     MIN_CORNER_EDGE_LENGTH = 25
     
@@ -47,7 +47,7 @@ class PieceAnalyzer:
             puzzle_pieces: List of PuzzlePiece objects to enrich
             piece_shapes: Dict mapping piece_id to binary mask
         """
-        print("\n🔍 Analyzing all pieces for corners and edges...")
+        print("\n[ANALYSIS] Analyzing all pieces for corners and edges...")
         
         for piece in puzzle_pieces:
             piece_id = int(piece.id)
@@ -63,11 +63,61 @@ class PieceAnalyzer:
             
             # Print summary
             if piece.piece_type == "corner":
-                print(f"  ✓ Piece {piece_id}: CORNER ({len(piece.corners)} corner(s), {len(piece.edges)} edge(s))")
+                print(f"  [+] Piece {piece_id}: CORNER ({len(piece.corners)} corner(s), {len(piece.edges)} edge(s))")
             elif piece.piece_type == "edge":
-                print(f"  ✓ Piece {piece_id}: EDGE ({len(piece.corners)} corner(s), {len(piece.edges)} edge(s))")
+                print(f"  [+] Piece {piece_id}: EDGE ({len(piece.corners)} corner(s), {len(piece.edges)} edge(s))")
             else:
-                print(f"  ○ Piece {piece_id}: CENTER ({len(piece.corners)} corner(s), {len(piece.edges)} edge(s))")
+                print(f"  [o] Piece {piece_id}: CENTER ({len(piece.corners)} corner(s), {len(piece.edges)} edge(s))")
+                
+        print(f"\n[RE-EVALUATION] Checking corner piece categorization...")
+            
+        # Find all pieces currently classified as "corner"
+        corner_pieces = [p for p in puzzle_pieces if p.piece_type == "corner"]
+        
+        if len(corner_pieces) <= 4:
+            print(f"  ✅ Corner count OK: {len(corner_pieces)} pieces")
+        else:
+            print(f"  ⚠️  Too many corner pieces: {len(corner_pieces)} > 4")
+            print(f"      Re-evaluating based on corner quality scores...")
+            
+            # Score each corner piece by their best corner quality
+            corner_scores = []
+            for piece in corner_pieces:
+                if piece.corners:
+                    best_corner_quality = max(corner.quality for corner in piece.corners)
+                    total_corner_quality = sum(corner.quality for corner in piece.corners)
+                    corner_scores.append((piece, best_corner_quality, total_corner_quality, len(piece.corners)))
+                else:
+                    # Shouldn't happen, but handle it
+                    corner_scores.append((piece, 0.0, 0.0, 0))
+            
+            # Sort by: 1) total corner quality, 2) number of corners, 3) best corner quality
+            corner_scores.sort(key=lambda x: (x[2], x[3], x[1]), reverse=True)
+            
+            print(f"      Corner piece rankings:")
+            for i, (piece, best_qual, total_qual, count) in enumerate(corner_scores):
+                print(f"        {i+1}. Piece {piece.id}: {count} corners, total_quality={total_qual:.2f}, best={best_qual:.2f}")
+            
+            # Keep top 4 as corners, demote the rest to edges
+            true_corners = corner_scores[:4]
+            demoted_pieces = corner_scores[4:]
+            
+            for piece, _, _, _ in demoted_pieces:
+                old_type = piece.piece_type
+                piece.piece_type = "edge"
+                print(f"        📉 Demoted piece {piece.id}: {old_type} → edge")
+            
+            print(f"  ✅ Final corner pieces: {[int(p[0].id) for p in true_corners]}")
+            
+        # Final summary
+        final_corners = [p for p in puzzle_pieces if p.piece_type == "corner"]
+        final_edges = [p for p in puzzle_pieces if p.piece_type == "edge"] 
+        final_centers = [p for p in puzzle_pieces if p.piece_type == "center"]
+        
+        print(f"\n[FINAL SUMMARY]")
+        print(f"  Corner pieces: {len(final_corners)} - {[int(p.id) for p in final_corners]}")
+        print(f"  Edge pieces:   {len(final_edges)} - {[int(p.id) for p in final_edges]}")
+        print(f"  Center pieces: {len(final_centers)} - {[int(p.id) for p in final_centers]}")
     
     @staticmethod
     def analyze_piece(piece: PuzzlePiece, mask: np.ndarray) -> None:
@@ -282,7 +332,6 @@ class PieceAnalyzer:
             raw_rotation = (target_bisector - bisector_angle) % 360
             rotation_to_align = -(raw_rotation + 90)
             
-            # NEW: Check boundary overhang
             # Would this corner cause the piece to extend beyond puzzle boundaries?
             overhang_penalty = PieceAnalyzer._calculate_corner_overhang(
                 mask, p_curr, rotation_to_align, piece_center
@@ -393,13 +442,13 @@ class PieceAnalyzer:
         extends_down = max_y - corner_y_rot    # Should be ~0 (bad if large)
         
         # Calculate overhang in "wrong" directions
-        max_allowed_overhang = 3
+        max_allowed_overhang = 20
         
         right_overhang = max(0, extends_right - max_allowed_overhang)
         down_overhang = max(0, extends_down - max_allowed_overhang)
         
         # Also penalize if doesn't extend enough in "good" directions
-        min_required_extent = 50 
+        min_required_extent = 60 
         
         left_deficit = max(0, min_required_extent - extends_left)
         up_deficit = max(0, min_required_extent - extends_up)
@@ -418,7 +467,7 @@ class PieceAnalyzer:
         
         # DEBUG OUTPUT
         if total_penalty > 0.1:  # Only show problematic corners
-            print(f"      🔍 Overhang check at ({corner_x}, {corner_y}), rot={rotation:.1f}°:")
+            print(f"      [CHECK] Overhang check at ({corner_x}, {corner_y}), rot={rotation:.1f}:")
             print(f"         Extends: L={extends_left}px, R={extends_right}px, U={extends_up}px, D={extends_down}px")
             print(f"         Overhang: right={right_overhang}px, down={down_overhang}px")
             print(f"         Deficit: left={left_deficit}px, up={up_deficit}px")
