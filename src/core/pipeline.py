@@ -18,6 +18,7 @@ from src.solver.piece_analyzer import PieceAnalyzer
 from src.ui.simulator.solver_visualizer import SolverVisualizerApp
 from src.utils.pose import Pose
 from src.utils.puzzle_piece import PuzzlePiece
+from src.hardware.motion_control.MotionControlCommunication import MotionControlCommunicator
 
 from ..solver.guess_generator import GuessGenerator
 from ..solver.validation.scorer import PlacementScorer
@@ -493,14 +494,26 @@ class PuzzlePipeline:
 
     def _execute_hardware(self, solution):
         """Hardware ansteuern (PREN2)"""
-        self.logger.info("  → Motoren initialisieren...")
-        self.logger.info("  → Teile platzieren...")
+        puzzle_pieces = solution.get("puzzle_pieces")
+        
+        if not puzzle_pieces:
+            self.logger.error("Keine Puzzleteile fuer die Hardware gefunden!")
+            return
 
-        # The movement instructions are already printed by _print_movement_instructions_from_pieces
-        # Hardware can read them from the log
-
-        # TODO: Implementierung in PREN2
-        pass
+        try:
+            hw_config = self.config.hardware
+            
+            self.logger.info(f"  → Verbinde mit STM32 auf {hw_config.serial_port} ({hw_config.baud_rate} Baud)...")
+            
+            communicator = MotionControlCommunicator(
+                serial_port=hw_config.serial_port, 
+                baudrate=hw_config.baud_rate
+            )
+            
+            communicator.send_to_robot(puzzle_pieces)
+            
+        except Exception as e:
+            self.logger.error(f"Fehler bei der Hardware-Kommunikation: {e}")
 
     def _launch_ui(self, solution):
         """Launch Kivy UI to visualize the solution."""
