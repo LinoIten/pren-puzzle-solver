@@ -1,24 +1,44 @@
+import serial
 from src.utils.puzzle_piece import PuzzlePiece
-import math
 
-def send_to_robot(pieces: list[PuzzlePiece]) -> None:
+class MotionControlCommunicator:
     """
-    Minimal-„Schnittstelle":
-    - Wir drucken pro Teil eine Zeile mit x, y, theta.
-    - Genau das, was spaeter per seriell/TCP/etc. gesendet werden koennte.
-    Format (CSV-aehnlich, sehr lesbar):
-      ID; PICK_X_mm; PICK_Y_mm; PICK_THETA_deg; PLACE_X_mm; PLACE_Y_mm; PLACE_THETA_deg
+    Verwaltet die serielle Kommunikation zwischen dem Raspberry Pi und dem Mikrocontroller.
     """
-    header = "ID;PICK_X_mm;PICK_Y_mm;PICK_THETA_deg;PLACE_X_mm;PLACE_Y_mm;PLACE_THETA_deg"
-    print(header)
-    for p in pieces:
-        px, py, pt = p.pick_pose.x, p.pick_pose.y, p.pick_pose.theta
+    
+    def __init__(self, serial_port: str = '/dev/ttyUSB0', baudrate: int = 115200):
+        self.serial_port = serial_port
+        self.baudrate = baudrate
+
+    def send_to_robot(self, pieces: list[PuzzlePiece]) -> None:
+        """
+        Formatiert die geloesten Puzzleteile nach dem definierten ASCII-Protokoll
+        Format: [<ID,START_X,START_Y,ZIEL_X,ZIEL_Y,ROTATION>;...]
+        und sendet sie ueber die serielle Schnittstelle an den Mikrocontroller.
+        Die Werte werden mit maximaler Genauigkeit (ohne Rundung) uebertragen.
+        """
+        piece_strings = []
         
-        # Check if place_pose exists FIRST
-        if p.place_pose:
-            qx, qy, qt = p.place_pose.x, p.place_pose.y, p.place_pose.theta
-        else:
-            qx, qy, qt = math.nan, math.nan, math.nan
+        for p in pieces:
+            if not p.place_pose:
+                continue 
+                
+            px, py = p.pick_pose.x, p.pick_pose.y
+            qx, qy = p.place_pose.x, p.place_pose.y
+            
+            rotation = (p.place_pose.theta - p.pick_pose.theta) % 360.0
+            
+            piece_str = f"<{p.id},{px},{py},{qx},{qy},{rotation}>"
+            piece_strings.append(piece_str)
+            
+        if not piece_strings:
+            return
+
+        payload = "[" + ";".join(piece_strings) + "]\n"
         
-        line = f"{p.id};{px:.1f};{py:.1f};{pt:.1f};{qx:.1f};{qy:.1f};{qt:.1f}"
-        print(line)
+        try:
+            with serial.Serial(self.serial_port, self.baudrate, timeout=2.0) as ser:
+                ser.write(payload.encode('ascii'))
+                print("Daten erfolgreich gesendet.")
+        except serial.SerialException as e:
+            print(f"Fehler bei der seriellen Kommunikation: {e}")
