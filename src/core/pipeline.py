@@ -469,71 +469,6 @@ class PuzzlePipeline:
 
         self.logger.info("\n" + "=" * 80 + "\n")
 
-    def _print_movement_instructions(
-        self, initial_placements, final_placements, surfaces
-    ):
-        """Print movement instructions for each piece in global coordinates."""
-
-        self.logger.info("\n" + "=" * 80)
-        self.logger.info("MOVEMENT INSTRUCTIONS (Global Coordinates)")
-        self.logger.info("=" * 80)
-
-        # Create lookup for initial positions
-        initial_lookup = {p["piece_id"]: p for p in initial_placements}
-
-        source_offset_x = surfaces["source"]["offset_x"]
-        source_offset_y = surfaces["source"]["offset_y"]
-        target_offset_x = surfaces["target"]["offset_x"]
-        target_offset_y = surfaces["target"]["offset_y"]
-
-        for final in final_placements:
-            piece_id = final["piece_id"]
-
-            if piece_id not in initial_lookup:
-                self.logger.warning(
-                    f"  ! Piece {piece_id} not found in initial placements"
-                )
-                continue
-
-            initial = initial_lookup[piece_id]
-
-            # Convert to global coordinates
-            # Initial position: source area coordinates
-            initial_global_x = source_offset_x + initial["x"]
-            initial_global_y = source_offset_y + initial["y"]
-
-            # Final position: target area coordinates
-            final_global_x = target_offset_x + final["x"]
-            final_global_y = target_offset_y + final["y"]
-
-            # Calculate movement
-            delta_x = final_global_x - initial_global_x
-            delta_y = final_global_y - initial_global_y
-            distance = np.sqrt(delta_x**2 + delta_y**2)
-
-            # Rotation change
-            rotation_change = (final["theta"] - initial["theta"]) % 360
-
-            self.logger.info(f"\nPiece {piece_id}:")
-            self.logger.info(
-                f"  Initial (global): ({initial_global_x:.1f}, {initial_global_y:.1f}) @ {initial['theta']:.0f}°"
-            )
-            self.logger.info(
-                f"  Final (global):   ({final_global_x:.1f}, {final_global_y:.1f}) @ {final['theta']:.0f}°"
-            )
-            self.logger.info(
-                f"  Movement: Δx={delta_x:.1f}, Δy={delta_y:.1f}, distance={distance:.1f}"
-            )
-            if rotation_change != 0:
-                self.logger.info(f"  Rotation: {rotation_change:.0f}°")
-
-            # Direction
-            if abs(delta_x) > 0.1 or abs(delta_y) > 0.1:
-                angle = np.degrees(np.arctan2(delta_y, delta_x))
-                self.logger.info(f"  Direction: {angle:.1f}° from horizontal")
-
-        self.logger.info("\n" + "=" * 80 + "\n")
-
     def _validate_solution(self, solution):
         """Loesung validieren"""
         self.logger.info("  → Geometrie pruefen...")
@@ -561,7 +496,7 @@ class PuzzlePipeline:
         self.logger.info("  → Motoren initialisieren...")
         self.logger.info("  → Teile platzieren...")
 
-        # The movement instructions are already printed by _print_movement_instructions
+        # The movement instructions are already printed by _print_movement_instructions_from_pieces
         # Hardware can read them from the log
 
         # TODO: Implementierung in PREN2

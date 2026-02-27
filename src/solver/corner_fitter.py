@@ -2,6 +2,8 @@
 
 import cv2
 import numpy as np
+
+from src.utils.geometry import rotate_and_crop
 from typing import Tuple, List
 from dataclasses import dataclass
 
@@ -140,26 +142,8 @@ class CornerFitter:
         )
 
     def _rotate_mask(self, mask: np.ndarray, angle: float) -> np.ndarray:
-        """Rotate a mask by exact angle."""
-        if angle == 0:
-            return mask
-        
-        h, w = mask.shape[:2]
-        center = (w // 2, h // 2)
-        M = cv2.getRotationMatrix2D(center, angle, 1.0)
-        
-        # Calculate new size
-        cos = np.abs(M[0, 0])
-        sin = np.abs(M[0, 1])
-        new_w = int((h * sin) + (w * cos))
-        new_h = int((h * cos) + (w * sin))
-        
-        # Adjust translation
-        M[0, 2] += (new_w / 2) - center[0]
-        M[1, 2] += (new_h / 2) - center[1]
-        
-        rotated = cv2.warpAffine(mask, M, (new_w, new_h))
-        return rotated
+        """Rotate a mask by exact angle (no cropping)."""
+        return rotate_and_crop(mask, angle, crop=False)
     
     def _render_at_position(self, mask: np.ndarray, pos: Tuple[float, float]) -> np.ndarray:
         """Render a mask at a specific position on the canvas."""
