@@ -16,7 +16,10 @@ class MockPuzzleGenerator:
         self, output_dir: str = "data/mock_pieces", num_cuts: int | None = None
     ):
         self.output_dir = Path(output_dir)
-        self.output_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            self.output_dir.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            pass
 
         # Working at 2 pixels per mm: A4 = 210x297mm = 420x594px
         self.a4_width = 420

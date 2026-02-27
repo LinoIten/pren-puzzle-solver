@@ -217,16 +217,21 @@ class PuzzlePipeline:
         self.logger.info(f"    Edge pieces: {edge_count}")
         self.logger.info(f"    Center pieces: {center_count}")
 
-        # Save visualizations
+        # Save visualizations (skip if directory is read-only)
         debug_dir = generator.output_dir / "debug"
-        os.makedirs(debug_dir, exist_ok=True)
+        try:
+            os.makedirs(debug_dir, exist_ok=True)
+            save_debug = True
+        except OSError:
+            save_debug = False
 
         for piece in puzzle_pieces:
             piece_id = int(piece.id)
             if piece_id in piece_shapes:
                 self.logger.info(f"\n{piece.summary()}")
-                vis = PieceAnalyzer.visualize_corners(piece_shapes[piece_id], piece)
-                cv2.imwrite(str(debug_dir / f"piece_{piece_id}_analysis.png"), vis)
+                if save_debug:
+                    vis = PieceAnalyzer.visualize_corners(piece_shapes[piece_id], piece)
+                    cv2.imwrite(str(debug_dir / f"piece_{piece_id}_analysis.png"), vis)
 
         self.logger.info(f"\n  → {len(piece_ids)} Teile geladen und analysiert")
         self.logger.info("=" * 80 + "\n")
