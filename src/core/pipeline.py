@@ -15,7 +15,6 @@ import numpy as np
 from src.solver.iterative_solver import IterativeSolver
 from src.solver.movement_analyzer import calculate_movement_data_for_visualizer
 from src.solver.piece_analyzer import PieceAnalyzer
-from src.ui.simulator.solver_visualizer import SolverVisualizerApp
 from src.utils.pose import Pose
 from src.utils.puzzle_piece import PuzzlePiece
 
@@ -543,5 +542,6 @@ class PuzzlePipeline:
             num_movements = len(movement_data.get("movements", {}))
             self.logger.info(f"  → Calculated movement data for {num_movements} pieces")
 
+        from src.ui.simulator.solver_visualizer import SolverVisualizerApp
         app = SolverVisualizerApp(solver_data)
         app.run()
