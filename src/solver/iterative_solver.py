@@ -65,10 +65,11 @@ class IterativeSolver:
     - Switches back to CORNER_SEARCH if refinement plateaus
     """
 
-    def __init__(self, renderer, scorer, guess_generator):
+    def __init__(self, renderer, scorer, guess_generator, tuning=None):
         self.renderer = renderer
         self.scorer = scorer
         self.guess_generator = guess_generator
+        self.tuning = tuning
         self.corner_fitter = None
         self.all_guesses = []
         self.all_scores = []
@@ -92,7 +93,7 @@ class IterativeSolver:
         """
 
         height, width = target.shape
-        self.corner_fitter = CornerFitter(width=width, height=height)
+        self.corner_fitter = CornerFitter(width=width, height=height, tuning=self.tuning)
 
         # Reset state
         self.all_guesses = []
@@ -273,6 +274,12 @@ class IterativeSolver:
             print(f"    Corner-only score: {corner_only_score:.1f}")
 
             # Try edge placement on this corner layout
+            edge_kwargs = {}
+            if self.tuning:
+                edge_kwargs = dict(
+                    slide_positions=self.tuning.slide_positions,
+                    center_piece_margin=self.tuning.center_piece_margin,
+                )
             solution_with_edges = try_edge_placement_on_corners(
                 corner_pieces=current_piece_perm,
                 corner_placements=current_corner_placements,
@@ -285,6 +292,7 @@ class IterativeSolver:
                 scorer=self.scorer,
                 all_guesses=self.all_guesses,
                 all_scores=self.all_scores,
+                **edge_kwargs,
             )
 
             final_score = solution_with_edges["final_score"]

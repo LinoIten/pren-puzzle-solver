@@ -37,7 +37,7 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg
 project_root = Path(__file__).parent
 sys.path.insert(0, str(project_root))
 
-from src.core.config import Config
+from src.core.config import Config, SolverTuning
 from src.core.pipeline import PuzzlePipeline
 from src.solver.validation.scorer import PlacementScorer
 from src.ui.simulator.solver_visualizer import SolverVisualizer
@@ -742,8 +742,11 @@ class ControllerGUI(BoxLayout):
                         renderer = result.solution["renderer"]
                         piece_shapes = result.solution["piece_shapes"]
                         target = result.solution["target"]
+                        tuning = SolverTuning()
                         scorer = PlacementScorer(
-                            overlap_penalty=2.0, coverage_reward=1.0, gap_penalty=0.5
+                            overlap_penalty=tuning.overlap_penalty,
+                            coverage_reward=tuning.coverage_reward,
+                            gap_penalty=tuning.gap_penalty,
                         )
 
                         for i, guess in enumerate(guesses):

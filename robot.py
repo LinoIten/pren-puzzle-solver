@@ -19,7 +19,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from src.core.config import Config
+from src.core.config import Config, SolverTuning
 from src.solver.iterative_solver import IterativeSolver
 from src.solver.movement_analyzer import MovementAnalyzer
 from src.solver.piece_analyzer import PieceAnalyzer
@@ -33,7 +33,6 @@ from src.vision.mock_puzzle_creator import MockPuzzleGenerator
 
 INPUT_DIR = Path(__file__).parent / "input"
 WORK_DIR = Path("data/robot_pieces")
-SCORE_THRESHOLD = 205000.0
 
 
 def copy_pieces():
@@ -166,22 +165,30 @@ def main():
         sys.exit(1)
 
     # 2. Teile analysieren
-    PieceAnalyzer.analyze_all_pieces(puzzle_pieces, piece_shapes)
+    tuning = SolverTuning()
+    PieceAnalyzer.analyze_all_pieces(puzzle_pieces, piece_shapes, tuning=tuning)
 
     # 3. Puzzle loesen
     surfaces = create_surface_layout()
     target = surfaces["target"]["mask"]
 
     renderer = GuessRenderer(width=target.shape[1], height=target.shape[0])
-    scorer = PlacementScorer(overlap_penalty=2.0, coverage_reward=1.0, gap_penalty=0.5)
+    scorer = PlacementScorer(
+        overlap_penalty=tuning.overlap_penalty,
+        coverage_reward=tuning.coverage_reward,
+        gap_penalty=tuning.gap_penalty,
+    )
     guess_generator = GuessGenerator(rotation_step=90)
 
-    solver = IterativeSolver(renderer=renderer, scorer=scorer, guess_generator=guess_generator)
+    solver = IterativeSolver(renderer=renderer, scorer=scorer, guess_generator=guess_generator, tuning=tuning)
     solution = solver.solve_iteratively(
         piece_shapes=piece_shapes,
         target=target,
         puzzle_pieces=puzzle_pieces,
-        score_threshold=SCORE_THRESHOLD,
+        score_threshold=tuning.score_threshold,
+        initial_corner_count=tuning.initial_corner_count,
+        max_corners_to_refine=tuning.max_corners_to_refine,
+        max_iterations=tuning.max_iterations,
     )
 
     if not solution.success:

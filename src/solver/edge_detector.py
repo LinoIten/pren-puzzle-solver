@@ -10,15 +10,13 @@ from typing import Dict, List, Tuple
 from src.utils.puzzle_piece import CornerData, EdgeData
 
 
-# Edge detection thresholds
-MIN_EDGE_LENGTH = 15
-MIN_EDGE_STRAIGHTNESS = 0.75
-MIN_EDGE_SCORE = 0.3
-
-
 def detect_edges(mask: np.ndarray,
                  piece_center: Tuple[float, float],
-                 corner_data_list: List[CornerData]) -> List[EdgeData]:
+                 corner_data_list: List[CornerData],
+                 min_edge_length: int = 15,
+                 min_edge_straightness: float = 0.75,
+                 min_edge_score: float = 0.3,
+                 contour_epsilon: float = 0.008) -> List[EdgeData]:
     """
     Detect straight edges on the piece (excluding corner edges).
 
@@ -33,7 +31,7 @@ def detect_edges(mask: np.ndarray,
     contour = max(contours, key=cv2.contourArea)
 
     # Approximate to get segments
-    epsilon = 0.008 * cv2.arcLength(contour, True)
+    epsilon = contour_epsilon * cv2.arcLength(contour, True)
     approx = cv2.approxPolyDP(contour, epsilon, True)
     n = len(approx)
 
@@ -62,7 +60,7 @@ def detect_edges(mask: np.ndarray,
         edge_vector = np.array([p2[0] - p1[0], p2[1] - p1[1]], dtype=float)
         length = float(np.linalg.norm(edge_vector))
 
-        if length < MIN_EDGE_LENGTH:
+        if length < min_edge_length:
             continue
 
         # Find segment in original contour for straightness measurement
@@ -75,7 +73,7 @@ def detect_edges(mask: np.ndarray,
         # Measure straightness
         straightness = _measure_edge_straightness(contour, idx1, idx2)
 
-        if straightness < MIN_EDGE_STRAIGHTNESS:
+        if straightness < min_edge_straightness:
             continue
 
         # Calculate edge angle
@@ -106,7 +104,7 @@ def detect_edges(mask: np.ndarray,
             0.4 * length_score
         )
 
-        if overall_quality < MIN_EDGE_SCORE:
+        if overall_quality < min_edge_score:
             continue
 
         # Calculate rotations to align to each direction

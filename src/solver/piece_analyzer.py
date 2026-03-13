@@ -32,7 +32,8 @@ class PieceAnalyzer:
 
     @staticmethod
     def analyze_all_pieces(puzzle_pieces: List[PuzzlePiece],
-                          piece_shapes: Dict[int, np.ndarray]) -> None:
+                          piece_shapes: Dict[int, np.ndarray],
+                          tuning=None) -> None:
         """
         Analyze all pieces and populate their analysis data IN-PLACE.
 
@@ -52,7 +53,7 @@ class PieceAnalyzer:
             mask = piece_shapes[piece_id]
 
             # Analyze this piece
-            PieceAnalyzer.analyze_piece(piece, mask)
+            PieceAnalyzer.analyze_piece(piece, mask, tuning=tuning)
 
             # Print summary
             if piece.piece_type == "corner":
@@ -112,7 +113,7 @@ class PieceAnalyzer:
         print(f"  Center pieces: {len(final_centers)} - {[int(p.id) for p in final_centers]}")
 
     @staticmethod
-    def analyze_piece(piece: PuzzlePiece, mask: np.ndarray) -> None:
+    def analyze_piece(piece: PuzzlePiece, mask: np.ndarray, tuning=None) -> None:
         """
         Analyze a single piece and populate its analysis fields IN-PLACE.
 
@@ -143,7 +144,18 @@ class PieceAnalyzer:
                 piece.perimeter = cv2.arcLength(contours[0], True)
 
             # Detect corners
-            corner_data_list = detect_corners(mask, (cx, cy))
+            corner_kwargs = {}
+            if tuning:
+                corner_kwargs = dict(
+                    angle_tolerance=tuning.corner_angle_tolerance,
+                    min_straightness=tuning.corner_min_straightness,
+                    min_edge_length=tuning.corner_min_edge_length,
+                    min_quality=tuning.corner_min_quality,
+                    contour_epsilon=tuning.corner_contour_epsilon,
+                    max_overhang=tuning.corner_max_overhang,
+                    min_extent=tuning.corner_min_extent,
+                )
+            corner_data_list = detect_corners(mask, (cx, cy), **corner_kwargs)
             piece.corners = corner_data_list
             piece.has_corner = len(corner_data_list) > 0
 
@@ -153,7 +165,15 @@ class PieceAnalyzer:
                 piece.primary_corner_rotation = best_corner.rotation_to_align
 
             # Detect straight edges (excluding corner edges)
-            edge_data_list = detect_edges(mask, (cx, cy), corner_data_list)
+            edge_kwargs = {}
+            if tuning:
+                edge_kwargs = dict(
+                    min_edge_length=tuning.edge_min_length,
+                    min_edge_straightness=tuning.edge_min_straightness,
+                    min_edge_score=tuning.edge_min_score,
+                    contour_epsilon=tuning.edge_contour_epsilon,
+                )
+            edge_data_list = detect_edges(mask, (cx, cy), corner_data_list, **edge_kwargs)
             piece.edges = edge_data_list
             piece.has_straight_edge = len(edge_data_list) > 0
 
@@ -168,11 +188,13 @@ class PieceAnalyzer:
             # Classify piece type - SMARTER LOGIC
             num_corners = len(corner_data_list)
             num_edges = len(edge_data_list)
+            corner_thresh = tuning.classify_corner_threshold if tuning else 0.85
+            edge_thresh = tuning.classify_edge_threshold if tuning else 0.8
 
-            if (num_corners > 0 and corner_data_list[0].quality > 0.85):
+            if (num_corners > 0 and corner_data_list[0].quality > corner_thresh):
                 piece.piece_type = "corner"
                 piece.analysis_confidence = corner_data_list[0].quality
-            elif (num_edges > 0 and edge_data_list[0].quality > 0.8):
+            elif (num_edges > 0 and edge_data_list[0].quality > edge_thresh):
                 piece.piece_type = "edge"
                 piece.analysis_confidence = edge_data_list[0].quality
             elif (num_corners > 0 and num_edges > 0):

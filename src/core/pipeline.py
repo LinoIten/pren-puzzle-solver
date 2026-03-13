@@ -37,8 +37,6 @@ class PipelineResult:
     solution: Optional[dict] = None
 
 
-# constants
-SCORE_THRESHOLD = 205000.0
 
 
 class PuzzlePipeline:
@@ -63,10 +61,13 @@ class PuzzlePipeline:
         self.puzzle_dir = puzzle_dir  # Directory containing a saved puzzle
 
         # Initialize solver components - renderer will be created with target
+        self.tuning = config.tuning
         self.guess_generator = GuessGenerator(rotation_step=90)
         self.renderer = None  # Will be created after we have target
         self.scorer = PlacementScorer(
-            overlap_penalty=2.0, coverage_reward=1.0, gap_penalty=0.5
+            overlap_penalty=self.tuning.overlap_penalty,
+            coverage_reward=self.tuning.coverage_reward,
+            gap_penalty=self.tuning.gap_penalty,
         )
 
     def run(self) -> PipelineResult:
@@ -201,7 +202,7 @@ class PuzzlePipeline:
         piece_ids, piece_shapes = generator.load_pieces_for_solver()
 
         # NOW analyze the pieces (this is where the analysis happens)
-        PieceAnalyzer.analyze_all_pieces(puzzle_pieces, piece_shapes)
+        PieceAnalyzer.analyze_all_pieces(puzzle_pieces, piece_shapes, tuning=self.tuning)
 
         # Print analysis results
         self.logger.info("\n" + "=" * 80)
@@ -265,6 +266,7 @@ class PuzzlePipeline:
             renderer=self.renderer,
             scorer=self.scorer,
             guess_generator=self.guess_generator,
+            tuning=self.tuning,
         )
 
         # Create initial placements from PuzzlePiece objects
@@ -274,7 +276,10 @@ class PuzzlePipeline:
             piece_shapes=piece_shapes,
             target=target,
             puzzle_pieces=puzzle_pieces,
-            score_threshold=SCORE_THRESHOLD,
+            score_threshold=self.tuning.score_threshold,
+            initial_corner_count=self.tuning.initial_corner_count,
+            max_corners_to_refine=self.tuning.max_corners_to_refine,
+            max_iterations=self.tuning.max_iterations,
         )
         if not solution.success:
             self.logger.warning("  ! Keine gute Loesung gefunden")
@@ -313,7 +318,7 @@ class PuzzlePipeline:
                     piece.place_pose = Pose(
                         x=placement["x"], y=placement["y"], theta=placement["theta"]
                     )
-                    piece.confidence = 1.0 if solution.score > SCORE_THRESHOLD else 0.5
+                    piece.confidence = 1.0 if solution.score > self.tuning.score_threshold else 0.5
                     self.logger.debug(f"    Piece {piece_id}: {piece.place_pose}")
                     break
 

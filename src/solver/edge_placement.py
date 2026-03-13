@@ -24,6 +24,8 @@ def try_edge_placement_on_corners(
     scorer,
     all_guesses,
     all_scores,
+    slide_positions: int = 20,
+    center_piece_margin: int = 50,
 ) -> dict:
     """Try smart edge placement on a specific corner layout."""
 
@@ -60,6 +62,7 @@ def try_edge_placement_on_corners(
             scorer=scorer,
             all_guesses=all_guesses,
             all_scores=all_scores,
+            slide_positions=slide_positions,
         )
 
         if best_placement:
@@ -91,8 +94,8 @@ def try_edge_placement_on_corners(
         rotated = rotate_and_crop(piece_shapes[piece_id], theta)
         piece_h, piece_w = rotated.shape
 
-        x = random.uniform(50, target.shape[1] - piece_w - 50)
-        y = random.uniform(50, target.shape[0] - piece_h - 50)
+        x = random.uniform(center_piece_margin, target.shape[1] - piece_w - center_piece_margin)
+        y = random.uniform(center_piece_margin, target.shape[0] - piece_h - center_piece_margin)
 
         current_placements.append(
             {"piece_id": piece_id, "x": x, "y": y, "theta": theta}
@@ -123,6 +126,7 @@ def find_best_edge_placement(
     scorer,
     all_guesses,
     all_scores,
+    slide_positions: int = 20,
 ) -> Optional[dict]:
     """
     Smart edge placement:
@@ -233,6 +237,7 @@ def find_best_edge_placement(
             scorer=scorer,
             all_guesses=all_guesses,
             all_scores=all_scores,
+            num_positions=slide_positions,
         )
 
         if optimized["score"] > best_score:
@@ -255,6 +260,7 @@ def slide_along_axis(
     scorer,
     all_guesses,
     all_scores,
+    num_positions: int = 20,
 ) -> dict:
     """
     Slide piece along its axis (vertical or horizontal) to find best position.
@@ -275,7 +281,7 @@ def slide_along_axis(
     # Determine search range
     if axis_type == "vertical":
         # Slide up/down (vary y)
-        positions = np.linspace(0, max(0, height - piece_h), num=20)
+        positions = np.linspace(0, max(0, height - piece_h), num=num_positions)
 
         for y_pos in positions:
             test_placement = initial_placement.copy()
@@ -295,7 +301,7 @@ def slide_along_axis(
 
     else:  # horizontal
         # Slide left/right (vary x)
-        positions = np.linspace(0, max(0, width - piece_w), num=20)
+        positions = np.linspace(0, max(0, width - piece_w), num=num_positions)
 
         for x_pos in positions:
             test_placement = initial_placement.copy()

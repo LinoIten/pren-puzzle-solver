@@ -10,14 +10,15 @@ from typing import List, Tuple
 from src.utils.puzzle_piece import CornerData
 
 
-# Corner detection thresholds
-ANGLE_TOL = 6
-MIN_CORNER_STRAIGHTNESS = 0.9
-MIN_CORNER_EDGE_LENGTH = 25
-
-
 def detect_corners(mask: np.ndarray,
-                   piece_center: Tuple[float, float]) -> List[CornerData]:
+                   piece_center: Tuple[float, float],
+                   angle_tolerance: int = 6,
+                   min_straightness: float = 0.9,
+                   min_edge_length: int = 25,
+                   min_quality: float = 0.65,
+                   contour_epsilon: float = 0.01,
+                   max_overhang: int = 20,
+                   min_extent: int = 60) -> List[CornerData]:
     """
     Detect 90-degree corners on the piece.
 
@@ -32,7 +33,7 @@ def detect_corners(mask: np.ndarray,
     contour = max(contours, key=cv2.contourArea)
 
     # Approximate to reduce noise
-    epsilon = 0.01 * cv2.arcLength(contour, True)
+    epsilon = contour_epsilon * cv2.arcLength(contour, True)
     approx = cv2.approxPolyDP(contour, epsilon, True)
     n = len(approx)
 
@@ -60,7 +61,7 @@ def detect_corners(mask: np.ndarray,
         v2_len = np.linalg.norm(v2)
 
         # Skip if edges too short
-        if v1_len < MIN_CORNER_EDGE_LENGTH or v2_len < MIN_CORNER_EDGE_LENGTH:
+        if v1_len < min_edge_length or v2_len < min_edge_length:
             continue
 
         # Normalize vectors
@@ -73,16 +74,16 @@ def detect_corners(mask: np.ndarray,
 
         # Check if close to 90 degrees
         angle_error = abs(90 - angle)
-        if angle_error > ANGLE_TOL:
+        if angle_error > angle_tolerance:
             continue
 
-        angle_score = 1.0 - (angle_error / ANGLE_TOL)
+        angle_score = 1.0 - (angle_error / angle_tolerance)
 
         # Measure straightness (simplified)
         edge1_straightness = 0.9
         edge2_straightness = 0.9
 
-        if edge1_straightness < MIN_CORNER_STRAIGHTNESS or edge2_straightness < MIN_CORNER_STRAIGHTNESS:
+        if edge1_straightness < min_straightness or edge2_straightness < min_straightness:
             continue
 
         # Calculate distance from center
@@ -127,7 +128,8 @@ def detect_corners(mask: np.ndarray,
 
         # Would this corner cause the piece to extend beyond puzzle boundaries?
         overhang_penalty = calculate_corner_overhang(
-            mask, p_curr, rotation_to_align, piece_center
+            mask, p_curr, rotation_to_align, piece_center,
+            max_allowed_overhang=max_overhang, min_required_extent=min_extent
         )
 
         # Reduce quality if corner would cause overhang
@@ -138,7 +140,7 @@ def detect_corners(mask: np.ndarray,
         if overhang_penalty > 0.1:
             print(f"      ⚠️  Corner quality: {quality_before:.3f} → {overall_quality:.3f} (penalty={overhang_penalty:.3f})")
 
-        if overall_quality < 0.65:
+        if overall_quality < min_quality:
             continue
 
         corner_data = CornerData(
@@ -166,7 +168,9 @@ def detect_corners(mask: np.ndarray,
 def calculate_corner_overhang(mask: np.ndarray,
                               corner_point: np.ndarray,
                               rotation: float,
-                              piece_center: Tuple[float, float]) -> float:
+                              piece_center: Tuple[float, float],
+                              max_allowed_overhang: int = 20,
+                              min_required_extent: int = 60) -> float:
     """
     Calculate how much a piece would overhang if this corner is placed at puzzle corner.
 
@@ -219,12 +223,8 @@ def calculate_corner_overhang(mask: np.ndarray,
     extends_up = corner_y_rot - min_y
     extends_down = max_y - corner_y_rot
 
-    max_allowed_overhang = 20
-
     right_overhang = max(0, extends_right - max_allowed_overhang)
     down_overhang = max(0, extends_down - max_allowed_overhang)
-
-    min_required_extent = 60
 
     left_deficit = max(0, min_required_extent - extends_left)
     up_deficit = max(0, min_required_extent - extends_up)
