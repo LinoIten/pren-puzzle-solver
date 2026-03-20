@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+// Shared protocol between Raspberry Pi (Python) and STM32 (C/nanopb).
+// Pi sends commands, STM32 acknowledges and reports status.
+
+// --- Pi → STM32 ---
+
+message PieceCommand {
+  uint32 piece_id = 1;
+  // Pick position (where the piece currently is) in mm
+  float pick_x = 2;
+  float pick_y = 3;
+  // Place position (where the piece needs to go) in mm
+  float place_x = 4;
+  float place_y = 5;
+  // Rotation in degrees
+  float rotation = 6;
+}
+
+message PuzzleCommand {
+  repeated PieceCommand pieces = 1;
+}
+
+// --- STM32 → Pi ---
+
+enum Status {
+  STATUS_OK = 0;
+  STATUS_ERROR = 1;
+  STATUS_BUSY = 2;
+  STATUS_DONE = 3;
+}
+
+message Ack {
+  Status status = 1;
+  uint32 piece_id = 2;  // which piece this ack is about (0 = general)
+}

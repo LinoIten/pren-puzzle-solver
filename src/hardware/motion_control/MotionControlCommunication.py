@@ -1,24 +1,92 @@
-from src.utils.puzzle_piece import PuzzlePiece
-import math
+import logging
+import struct
+import time
 
-def send_to_robot(pieces: list[PuzzlePiece]) -> None:
+import serial
+
+from proto import puzzle_pb2
+from src.utils.puzzle_piece import PuzzlePiece
+
+logger = logging.getLogger(__name__)
+
+# Default UART settings — match STM32 UART7 config
+DEFAULT_PORT = "/dev/ttyAMA0"  # Raspberry Pi hardware UART
+DEFAULT_BAUDRATE = 115200
+DEFAULT_TIMEOUT = 5.0  # seconds
+
+
+def _send_frame(ser: serial.Serial, payload: bytes) -> None:
+    """Sende ein laengenpraefixiertes Frame: [len_hi][len_lo][payload]"""
+    length = len(payload)
+    header = struct.pack(">H", length)
+    ser.write(header + payload)
+    ser.flush()
+
+
+def _receive_frame(ser: serial.Serial) -> bytes | None:
+    """Empfange ein laengenpraefixiertes Frame."""
+    header = ser.read(2)
+    if len(header) < 2:
+        return None
+    length = struct.unpack(">H", header)[0]
+    data = ser.read(length)
+    if len(data) < length:
+        return None
+    return data
+
+
+def send_to_robot(
+    pieces: list[PuzzlePiece],
+    port: str = DEFAULT_PORT,
+    baudrate: int = DEFAULT_BAUDRATE,
+    timeout: float = DEFAULT_TIMEOUT,
+) -> bool:
     """
-    Minimal-„Schnittstelle":
-    - Wir drucken pro Teil eine Zeile mit x, y, theta.
-    - Genau das, was spaeter per seriell/TCP/etc. gesendet werden koennte.
-    Format (CSV-aehnlich, sehr lesbar):
-      ID; PICK_X_mm; PICK_Y_mm; PICK_THETA_deg; PLACE_X_mm; PLACE_Y_mm; PLACE_THETA_deg
+    Sende Puzzle-Loesung ueber UART an den STM32.
+
+    Baut eine PuzzleCommand protobuf-Nachricht aus den PuzzlePiece-Objekten
+    und sendet sie als laengenpraefixiertes Frame ueber die serielle
+    Schnittstelle. Wartet auf ein Ack vom STM32.
+
+    Returns True bei Erfolg (STATUS_OK), False bei Fehler.
     """
-    header = "ID;PICK_X_mm;PICK_Y_mm;PICK_THETA_deg;PLACE_X_mm;PLACE_Y_mm;PLACE_THETA_deg"
-    print(header)
+    cmd = puzzle_pb2.PuzzleCommand()
+
     for p in pieces:
-        px, py, pt = p.pick_pose.x, p.pick_pose.y, p.pick_pose.theta
-        
-        # Check if place_pose exists FIRST
+        piece = cmd.pieces.add()
+        piece.piece_id = int(p.id)
+        piece.pick_x = p.pick_pose.x
+        piece.pick_y = p.pick_pose.y
         if p.place_pose:
-            qx, qy, qt = p.place_pose.x, p.place_pose.y, p.place_pose.theta
+            piece.place_x = p.place_pose.x
+            piece.place_y = p.place_pose.y
+            piece.rotation = p.place_pose.theta
         else:
-            qx, qy, qt = math.nan, math.nan, math.nan
-        
-        line = f"{p.id};{px:.1f};{py:.1f};{pt:.1f};{qx:.1f};{qy:.1f};{qt:.1f}"
-        print(line)
+            piece.place_x = 0.0
+            piece.place_y = 0.0
+            piece.rotation = 0.0
+
+    payload = cmd.SerializeToString()
+    logger.info(
+        "Sende PuzzleCommand: %d Teile, %d Bytes", len(pieces), len(payload)
+    )
+
+    with serial.Serial(port, baudrate, timeout=timeout) as ser:
+        time.sleep(0.1)  # STM32 UART settle time
+        _send_frame(ser, payload)
+
+        # Warte auf Ack
+        ack_data = _receive_frame(ser)
+        if ack_data is None:
+            logger.error("Kein Ack vom STM32 erhalten (Timeout)")
+            return False
+
+        ack = puzzle_pb2.Ack()
+        ack.ParseFromString(ack_data)
+
+        if ack.status == puzzle_pb2.STATUS_OK:
+            logger.info("STM32 Ack: OK")
+            return True
+        else:
+            logger.error("STM32 Ack: Status=%d", ack.status)
+            return False
