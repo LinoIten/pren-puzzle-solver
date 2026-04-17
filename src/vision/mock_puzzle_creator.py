@@ -13,7 +13,13 @@ class MockPuzzleGenerator:
     """Generate realistic mock puzzle pieces for testing."""
 
     def __init__(
-        self, output_dir: str = "data/mock_pieces", num_cuts: int | None = None
+        self,
+        output_dir: str = "data/mock_pieces",
+        num_cuts: int | None = None,
+        a4_width: int = 420,
+        a4_height: int = 594,
+        a5_width: int = 840,
+        a5_height: int = 594,
     ):
         self.output_dir = Path(output_dir)
         try:
@@ -21,14 +27,12 @@ class MockPuzzleGenerator:
         except OSError:
             pass
 
-        # Working at 2 pixels per mm: A4 = 210x297mm = 420x594px
-        self.a4_width = 420
-        self.a4_height = 594
-
-        # A5 source area (double the area of A4)
-        # 420x297mm = 840x594px
-        self.a5_width = 840
-        self.a5_height = 594
+        # Dimensionen (Default entspricht 2 px/mm). Werden ueber ResolutionConfig
+        # skaliert, damit die gesamte Pipeline bei niedrigerer Aufloesung laeuft.
+        self.a4_width = a4_width
+        self.a4_height = a4_height
+        self.a5_width = a5_width
+        self.a5_height = a5_height
 
         self.num_cuts = random.choice([2, 3])
 

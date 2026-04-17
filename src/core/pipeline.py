@@ -61,12 +61,14 @@ class PuzzlePipeline:
 
         # Initialize solver components - renderer will be created with target
         self.tuning = config.tuning
+        self.resolution = config.resolution
         self.guess_generator = GuessGenerator(rotation_step=90)
         self.renderer = None  # Will be created after we have target
         self.scorer = PlacementScorer(
             overlap_penalty=self.tuning.overlap_penalty,
             coverage_reward=self.tuning.coverage_reward,
             gap_penalty=self.tuning.gap_penalty,
+            weight_multiplier=self.resolution.score_weight_multiplier,
         )
 
     def run(self) -> PipelineResult:
@@ -134,7 +136,13 @@ class PuzzlePipeline:
             output_dir = "data/mock_pieces"
             self.logger.info(f"  → Using default directory: {output_dir}")
 
-        generator = MockPuzzleGenerator(output_dir=output_dir)
+        generator = MockPuzzleGenerator(
+            output_dir=output_dir,
+            a4_width=self.resolution.a4_width,
+            a4_height=self.resolution.a4_height,
+            a5_width=self.resolution.a5_width,
+            a5_height=self.resolution.a5_height,
+        )
 
         # Check if we already have saved pieces
         all_piece_files = list(generator.output_dir.glob("piece_*.png"))
@@ -163,10 +171,10 @@ class PuzzlePipeline:
                 f"  → Lade {len(existing_pieces)} existierende Mock-Teile..."
             )
 
-            # A5 dimensions
-            a5_width = 840
-            a5_height = 594
-            margin = 80
+            # A5 dimensions (aus ResolutionConfig skaliert)
+            a5_width = self.resolution.a5_width
+            a5_height = self.resolution.a5_height
+            margin = max(1, int(round(80 * self.resolution.scale)))
 
             corner_positions = [
                 (margin, margin),
@@ -351,19 +359,16 @@ class PuzzlePipeline:
             - target: {width, height, offset_x, offset_y, mask}
         """
 
-        # A4 target dimensions (at some scale, e.g., 2 pixels per mm)
-        target_width = 420
-        target_height = 594
+        # A4 target dimensions (aus ResolutionConfig)
+        target_width = self.resolution.a4_width
+        target_height = self.resolution.a4_height
 
-        # A5 source dimensions (double the area of A4)
-        # A4 area = 420 * 594 = 249,480 sq pixels
-        # A5 should be ~500,000 sq pixels
-        # Using: 840 x 594 (double width, same height for easier layout)
-        source_width = 840
-        source_height = 594
+        # A5 source dimensions (doppelt so breit wie A4)
+        source_width = self.resolution.a5_width
+        source_height = self.resolution.a5_height
 
         # Global surface size (side by side with padding)
-        padding = 100
+        padding = max(1, int(round(100 * self.resolution.scale)))
         global_width = source_width + target_width + padding * 3
         global_height = max(source_height, target_height) + padding * 2
 

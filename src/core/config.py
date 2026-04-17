@@ -24,6 +24,47 @@ class SolverConfig:
 
 
 @dataclass
+class ResolutionConfig:
+    """Globale Aufloesung fuer den Solver (Performance-Tuning).
+
+    scale=1.0 entspricht 2 px/mm (A4 = 420x594, A5 = 840x594).
+    Kleinere Werte beschleunigen das Scoring quadratisch (weniger Pixel),
+    reduzieren aber die Praezision. Die Scorer-Gewichte werden automatisch
+    mit 1/scale^2 multipliziert, damit `score_threshold` unabhaengig von
+    der Aufloesung vergleichbar bleibt.
+    """
+
+    scale: float = 1.0
+
+    # Basis-Dimensionen bei scale=1.0 (2 Pixel pro mm)
+    base_a4_width: int = 420
+    base_a4_height: int = 594
+    base_a5_width: int = 840
+    base_a5_height: int = 594
+
+    @property
+    def a4_width(self) -> int:
+        return max(1, int(round(self.base_a4_width * self.scale)))
+
+    @property
+    def a4_height(self) -> int:
+        return max(1, int(round(self.base_a4_height * self.scale)))
+
+    @property
+    def a5_width(self) -> int:
+        return max(1, int(round(self.base_a5_width * self.scale)))
+
+    @property
+    def a5_height(self) -> int:
+        return max(1, int(round(self.base_a5_height * self.scale)))
+
+    @property
+    def score_weight_multiplier(self) -> float:
+        """Skalierungsfaktor fuer Scorer-Gewichte: 1/scale^2."""
+        return 1.0 / (self.scale ** 2)
+
+
+@dataclass
 class SolverTuning:
     """Zentrale Tuning-Parameter fuer den Solver - alle an einem Ort."""
 
@@ -84,6 +125,7 @@ class Config:
     solver: SolverConfig = field(default_factory=SolverConfig)
     hardware: HardwareConfig = field(default_factory=HardwareConfig)
     tuning: SolverTuning = field(default_factory=SolverTuning)
+    resolution: ResolutionConfig = field(default_factory=ResolutionConfig)
     
     # Pfade
     project_root: Path = field(default_factory=lambda: Path(__file__).parent.parent.parent)

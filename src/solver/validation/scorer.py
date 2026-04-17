@@ -1,12 +1,15 @@
 import numpy as np
 
 class PlacementScorer:
-    def __init__(self, overlap_penalty: float = 2.0, 
+    def __init__(self, overlap_penalty: float = 2.0,
                  coverage_reward: float = 1.0,
-                 gap_penalty: float = 0.5):
-        self.overlap_penalty = overlap_penalty
-        self.coverage_reward = coverage_reward
-        self.gap_penalty = gap_penalty
+                 gap_penalty: float = 0.5,
+                 weight_multiplier: float = 1.0):
+        # weight_multiplier skaliert die Per-Pixel-Gewichte (typisch 1/scale^2),
+        # sodass der score_threshold unabhaengig von der Aufloesung bleibt.
+        self.overlap_penalty = overlap_penalty * weight_multiplier
+        self.coverage_reward = coverage_reward * weight_multiplier
+        self.gap_penalty = gap_penalty * weight_multiplier
     
     def score(self, rendered: np.ndarray, target: np.ndarray) -> float:
         """
