@@ -77,7 +77,7 @@ class SolverTuning:
     overlap_penalty: float = 2.0
     coverage_reward: float = 1.0
     gap_penalty: float = 0.5
-    score_threshold: float = 205000.0
+    score_threshold: float = 210000.0
 
     # --- Corner Detection (corner_detector.py) ---
     corner_angle_tolerance: int = 6  # Grad Abweichung von 90°
@@ -90,8 +90,8 @@ class SolverTuning:
 
     # --- Edge Detection (edge_detector.py) ---
     edge_min_length: int = 10  # Pixel
-    edge_min_straightness: float = 0.7
-    edge_min_score: float = 0.15
+    edge_min_straightness: float = 0.8
+    edge_min_score: float = 0.35
     edge_contour_epsilon: float = 0.008  # Anteil des Umfangs
 
     # --- Piece Classification (piece_analyzer.py) ---
