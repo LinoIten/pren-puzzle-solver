@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_PORT = "/dev/ttyAMA0"  # Raspberry Pi hardware UART
 DEFAULT_BAUDRATE = 115200
 DEFAULT_TIMEOUT = 5.0  # seconds
-
+PIXEL_TO_MM_SCALE = 2.0
 
 def _send_frame(ser: serial.Serial, payload: bytes) -> None:
     """Sende ein laengenpraefixiertes Frame: [len_hi][len_lo][payload]"""
@@ -55,11 +55,11 @@ def send_to_robot(
     for p in pieces:
         piece = cmd.pieces.add()
         piece.piece_id = int(p.id)
-        piece.pick_x = p.pick_pose.x
-        piece.pick_y = p.pick_pose.y
+        piece.pick_x = p.pick_pose.x / PIXEL_TO_MM_SCALE
+        piece.pick_y = p.pick_pose.y / PIXEL_TO_MM_SCALE
         if p.place_pose:
-            piece.place_x = p.place_pose.x
-            piece.place_y = p.place_pose.y
+            piece.place_x = p.place_pose.x / PIXEL_TO_MM_SCALE
+            piece.place_y = p.place_pose.y / PIXEL_TO_MM_SCALE
             piece.rotation = p.place_pose.theta
         else:
             piece.place_x = 0.0
@@ -90,3 +90,35 @@ def send_to_robot(
         else:
             logger.error("STM32 Ack: Status=%d", ack.status)
             return False
+        
+        
+def wait_for_robot_start(port: str, baudrate: int) -> bool:
+    """
+    Blockiert und lauscht auf UART, bis der Hardware-Knopf am STM32 gedrueckt 
+    wurde (STM32 sendet STATUS_READY).
+    """
+    import serial
+    
+    # logger importieren, falls nicht schon oben geschehen
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    logger.info("Warte auf Hardware-Start-Knopf am Roboter...")
+    
+    # timeout=None bedeutet: Endlos warten, bis Daten kommen
+    with serial.Serial(port, baudrate, timeout=None) as ser:
+        ser.reset_input_buffer() # Alte Daten verwerfen
+        
+        while True:
+            # Deine existierende Funktion zum Einlesen eines Protobuf-Frames nutzen
+            data = _receive_frame(ser) 
+            if data is not None:
+                try:
+                    ack = puzzle_pb2.Ack()
+                    ack.ParseFromString(data)
+                    
+                    if ack.status == puzzle_pb2.STATUS_READY: 
+                        logger.info("✓ Roboter ist BEREIT (Button pressed)!")
+                        return True
+                except Exception as e:
+                    logger.warning(f"Fehler beim Parsen des UART-Signals: {e}")

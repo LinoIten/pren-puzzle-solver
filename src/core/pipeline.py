@@ -77,6 +77,16 @@ class PuzzlePipeline:
         start_time = time()
 
         try:
+            
+            if self.config.hardware.enabled:
+                from src.hardware.motion_control.MotionControlCommunication import wait_for_robot_start
+                
+                self.logger.info("Phase 0: Warte auf Freigabe durch den Roboter...")
+                wait_for_robot_start(
+                    port=self.config.hardware.serial_port,
+                    baudrate=self.config.hardware.baud_rate
+                )
+                
             # Phase 1: Vision
             self.logger.info("Phase 1: Bildverarbeitung")
             pieces, piece_shapes, corner_info, puzzle_pieces = self._process_vision()
