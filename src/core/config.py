@@ -13,7 +13,8 @@ class VisionConfig:
     image_height: int = 1080
     threshold_value: int = 127
     min_contour_area: int = 1000
-    regenerate_mock: bool = True
+    regenerate_mock: bool = False
+    num_cuts: int | None = None  # None = zufällig (2 oder 3); 3 = 6 Teile
 
 @dataclass
 class SolverConfig:

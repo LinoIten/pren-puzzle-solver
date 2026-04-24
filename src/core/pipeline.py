@@ -148,6 +148,7 @@ class PuzzlePipeline:
 
         generator = MockPuzzleGenerator(
             output_dir=output_dir,
+            num_cuts=self.config.vision.num_cuts,
             a4_width=self.resolution.a4_width,
             a4_height=self.resolution.a4_height,
             a5_width=self.resolution.a5_width,
