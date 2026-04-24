@@ -352,9 +352,14 @@ class MockPuzzleGenerator:
 
         return saved_paths
 
-    def load_pieces_for_solver(self, piece_paths: list = None) -> tuple:  # type: ignore
+    def load_pieces_for_solver(self, piece_paths: list = None, scale: float = 1.0) -> tuple:  # type: ignore
         """
         Load saved pieces and prepare them for the solver.
+
+        Args:
+            piece_paths: Optional list of paths to piece images.
+            scale: Resize factor applied to each mask (e.g. 0.5 halves both dims).
+                   Use ResolutionConfig.scale so pieces match the solver canvas.
 
         Returns:
             (piece_ids, piece_shapes_dict)
@@ -383,6 +388,12 @@ class MockPuzzleGenerator:
 
             # Normalize to 0 and 1
             mask = (mask > 127).astype(np.uint8)
+
+            # An die Aufloesung anpassen, damit Stuecke zur Ziel-Canvas passen
+            if scale != 1.0:
+                new_h = max(1, int(round(mask.shape[0] * scale)))
+                new_w = max(1, int(round(mask.shape[1] * scale)))
+                mask = cv2.resize(mask, (new_w, new_h), interpolation=cv2.INTER_NEAREST)
 
             piece_shapes[i] = mask
             piece_ids.append(i)

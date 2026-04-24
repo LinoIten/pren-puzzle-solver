@@ -19,17 +19,16 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from src.core.config import Config, SolverTuning
+from src.core.config import SolverTuning
+from src.solver.guess_generator import GuessGenerator
 from src.solver.iterative_solver import IterativeSolver
 from src.solver.movement_analyzer import MovementAnalyzer
 from src.solver.piece_analyzer import PieceAnalyzer
 from src.solver.validation.scorer import PlacementScorer
 from src.ui.simulator.guess_renderer import GuessRenderer
-from src.solver.guess_generator import GuessGenerator
 from src.utils.pose import Pose
 from src.utils.puzzle_piece import PuzzlePiece
 from src.vision.mock_puzzle_creator import MockPuzzleGenerator
-
 
 INPUT_DIR = Path(__file__).parent / "input"
 WORK_DIR = Path("data/robot_pieces")
@@ -43,7 +42,9 @@ def copy_pieces():
 
     pieces = sorted(INPUT_DIR.glob("piece_*.png"))
     if not pieces:
-        print(json.dumps({"error": f"Keine piece_*.png Dateien in {INPUT_DIR} gefunden"}))
+        print(
+            json.dumps({"error": f"Keine piece_*.png Dateien in {INPUT_DIR} gefunden"})
+        )
         sys.exit(1)
 
     for src in pieces:
@@ -94,7 +95,9 @@ def load_pieces(piece_paths):
         x = max(margin, min(a5_width - piece_w - margin, base_x))
         y = max(margin, min(a5_height - piece_h - margin, base_y))
 
-        piece = PuzzlePiece(pid=str(piece_id), pick=Pose(x=float(x), y=float(y), theta=0.0))
+        piece = PuzzlePiece(
+            pid=str(piece_id), pick=Pose(x=float(x), y=float(y), theta=0.0)
+        )
         puzzle_pieces.append(piece)
 
     return piece_ids, piece_shapes, puzzle_pieces
@@ -117,13 +120,17 @@ def create_surface_layout():
     return {
         "global": {"width": global_width, "height": global_height},
         "source": {
-            "width": source_width, "height": source_height,
-            "offset_x": source_offset_x, "offset_y": source_offset_y,
+            "width": source_width,
+            "height": source_height,
+            "offset_x": source_offset_x,
+            "offset_y": source_offset_y,
             "mask": np.ones((source_height, source_width), dtype=np.uint8),
         },
         "target": {
-            "width": target_width, "height": target_height,
-            "offset_x": target_offset_x, "offset_y": target_offset_y,
+            "width": target_width,
+            "height": target_height,
+            "offset_x": target_offset_x,
+            "offset_y": target_offset_y,
             "mask": np.ones((target_height, target_width), dtype=np.uint8),
         },
     }
@@ -180,7 +187,9 @@ def main():
     )
     guess_generator = GuessGenerator(rotation_step=90)
 
-    solver = IterativeSolver(renderer=renderer, scorer=scorer, guess_generator=guess_generator, tuning=tuning)
+    solver = IterativeSolver(
+        renderer=renderer, scorer=scorer, guess_generator=guess_generator, tuning=tuning
+    )
     solution = solver.solve_iteratively(
         piece_shapes=piece_shapes,
         target=target,
@@ -200,7 +209,9 @@ def main():
         pid = placement["piece_id"]
         for piece in puzzle_pieces:
             if int(piece.id) == pid:
-                piece.place_pose = Pose(x=placement["x"], y=placement["y"], theta=placement["theta"])
+                piece.place_pose = Pose(
+                    x=placement["x"], y=placement["y"], theta=placement["theta"]
+                )
                 break
 
     # 4. Bewegungsdaten berechnen
@@ -220,19 +231,23 @@ def main():
         piece_id = int(piece.id)
         if piece_id in movements:
             m = movements[piece_id]
-            output.append({
-                "piece_id": piece_id,
-                "x_mm": round(m["x_mm"], 2),
-                "y_mm": round(m["y_mm"], 2),
-                "rotation": round(m["rotation"], 2),
-            })
+            output.append(
+                {
+                    "piece_id": piece_id,
+                    "x_mm": round(m["x_mm"], 2),
+                    "y_mm": round(m["y_mm"], 2),
+                    "rotation": round(m["rotation"], 2),
+                }
+            )
         else:
-            output.append({
-                "piece_id": piece_id,
-                "x_mm": 0.0,
-                "y_mm": 0.0,
-                "rotation": 0.0,
-            })
+            output.append(
+                {
+                    "piece_id": piece_id,
+                    "x_mm": 0.0,
+                    "y_mm": 0.0,
+                    "rotation": 0.0,
+                }
+            )
 
     print(json.dumps(output, indent=2))
 

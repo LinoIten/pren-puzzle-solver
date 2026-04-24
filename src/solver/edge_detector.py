@@ -3,20 +3,23 @@ Edge detection logic for piece analysis.
 Detects straight edges, measures straightness, and calculates alignment rotations.
 """
 
+from typing import Dict, List, Tuple
+
 import cv2
 import numpy as np
-from typing import Dict, List, Tuple
 
 from src.utils.puzzle_piece import CornerData, EdgeData
 
 
-def detect_edges(mask: np.ndarray,
-                 piece_center: Tuple[float, float],
-                 corner_data_list: List[CornerData],
-                 min_edge_length: int = 15,
-                 min_edge_straightness: float = 0.75,
-                 min_edge_score: float = 0.3,
-                 contour_epsilon: float = 0.008) -> List[EdgeData]:
+def detect_edges(
+    mask: np.ndarray,
+    piece_center: Tuple[float, float],
+    corner_data_list: List[CornerData],
+    min_edge_length: int = 15,
+    min_edge_straightness: float = 0.75,
+    min_edge_score: float = 0.3,
+    contour_epsilon: float = 0.008,
+) -> List[EdgeData]:
     """
     Detect straight edges on the piece (excluding corner edges).
 
@@ -30,16 +33,14 @@ def detect_edges(mask: np.ndarray,
 
     contour = max(contours, key=cv2.contourArea)
 
-    # Approximate to get segments
+    # Approximate to get segments, then merge consecutive collinear ones
     epsilon = contour_epsilon * cv2.arcLength(contour, True)
     approx = cv2.approxPolyDP(contour, epsilon, True)
+    approx = _merge_collinear_segments(approx)
     n = len(approx)
 
     if n < 3:
         return []
-
-    # Get corner positions for filtering
-    corner_positions = {c.position for c in corner_data_list}
 
     # Calculate piece dimensions
     piece_h, piece_w = mask.shape
@@ -52,9 +53,6 @@ def detect_edges(mask: np.ndarray,
         p1 = tuple(approx[i][0])
         p2 = tuple(approx[(i + 1) % n][0])
 
-        # Skip if this edge connects two corner points
-        if p1 in corner_positions and p2 in corner_positions:
-            continue
 
         # Calculate edge properties
         edge_vector = np.array([p2[0] - p1[0], p2[1] - p1[1]], dtype=float)
@@ -99,20 +97,17 @@ def detect_edges(mask: np.ndarray,
 
         # Score
         length_score = min(1.0, length / (piece_perimeter * 0.2))
-        overall_quality = (
-            0.6 * straightness +
-            0.4 * length_score
-        )
+        overall_quality = 0.6 * straightness + 0.4 * length_score
 
         if overall_quality < min_edge_score:
             continue
 
         # Calculate rotations to align to each direction
         rotations_to_align = {
-            'right': _calculate_rotation_to_align(edge_angle, 0),
-            'bottom': _calculate_rotation_to_align(edge_angle, 90),
-            'left': _calculate_rotation_to_align(edge_angle, 180),
-            'top': _calculate_rotation_to_align(edge_angle, 270),
+            "right": _calculate_rotation_to_align(edge_angle, 0),
+            "bottom": _calculate_rotation_to_align(edge_angle, 90),
+            "left": _calculate_rotation_to_align(edge_angle, 180),
+            "top": _calculate_rotation_to_align(edge_angle, 270),
         }
 
         edge_data = EdgeData(
@@ -123,7 +118,7 @@ def detect_edges(mask: np.ndarray,
             straightness=straightness,
             angle=edge_angle,
             quality=overall_quality,
-            rotations_to_align=rotations_to_align
+            rotations_to_align=rotations_to_align,
         )
 
         edge_data_list.append(edge_data)
@@ -131,12 +126,12 @@ def detect_edges(mask: np.ndarray,
     # Sort by quality
     edge_data_list.sort(key=lambda e: e.quality, reverse=True)
 
-    return edge_data_list[:2]  # Return top 2
+    return edge_data_list
 
 
 def calculate_edge_rotations(edge_data_list: List[EdgeData]) -> Dict[str, List[float]]:
     """Calculate rotations to align edges to each cardinal direction."""
-    edge_rotations = {'bottom': [], 'right': [], 'top': [], 'left': []}
+    edge_rotations = {"bottom": [], "right": [], "top": [], "left": []}
 
     for edge_data in edge_data_list:
         for direction, rotation in edge_data.rotations_to_align.items():
@@ -153,6 +148,49 @@ def _calculate_rotation_to_align(current_angle: float, target_angle: float) -> f
     return float(-diff)
 
 
+def _merge_collinear_segments(
+    approx: np.ndarray, angle_threshold_deg: float = 8.0
+) -> np.ndarray:
+    """Merge consecutive approxPolyDP segments that are nearly collinear."""
+    pts = [approx[i][0] for i in range(len(approx))]
+    n = len(pts)
+    if n < 3:
+        return approx
+
+    merged = True
+    while merged:
+        merged = False
+        new_pts = []
+        skip = set()
+        for i in range(len(pts)):
+            if i in skip:
+                continue
+            j = (i + 1) % len(pts)
+            k = (i + 2) % len(pts)
+            if j in skip or k in skip:
+                new_pts.append(pts[i])
+                continue
+            v1 = np.array(pts[j], dtype=float) - np.array(pts[i], dtype=float)
+            v2 = np.array(pts[k], dtype=float) - np.array(pts[j], dtype=float)
+            l1 = np.linalg.norm(v1)
+            l2 = np.linalg.norm(v2)
+            if l1 < 1 or l2 < 1:
+                new_pts.append(pts[i])
+                continue
+            cos_angle = np.dot(v1, v2) / (l1 * l2)
+            cos_angle = np.clip(cos_angle, -1.0, 1.0)
+            angle = np.degrees(np.arccos(cos_angle))
+            if angle < angle_threshold_deg:
+                new_pts.append(pts[i])
+                skip.add(j)
+                merged = True
+            else:
+                new_pts.append(pts[i])
+        pts = new_pts
+
+    return np.array([[p] for p in pts], dtype=np.int32)
+
+
 def _find_point_in_contour(contour: np.ndarray, point: tuple) -> int:
     """Find the index of a point in the contour."""
     for i, pt in enumerate(contour):
@@ -161,7 +199,9 @@ def _find_point_in_contour(contour: np.ndarray, point: tuple) -> int:
     return -1
 
 
-def _measure_edge_straightness(contour: np.ndarray, start_idx: int, end_idx: int) -> float:
+def _measure_edge_straightness(
+    contour: np.ndarray, start_idx: int, end_idx: int
+) -> float:
     """Measure how straight an edge is (0-1, where 1.0 is perfectly straight)."""
     n = len(contour)
 

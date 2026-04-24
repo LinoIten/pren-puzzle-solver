@@ -71,18 +71,37 @@ class SolveResult:
     steps_data: Optional[Dict] = None
 
 
-class PuzzleThumbnail(Image):
+class PuzzleThumbnail(BoxLayout):
     """Custom widget for displaying puzzle thumbnails with selection state"""
 
     def __init__(self, puzzle_data, **kwargs):
         super().__init__(**kwargs)
+        self.orientation = "vertical"
         self.puzzle_data = puzzle_data
         self.size_hint = (None, None)
-        self.size = (dp(120), dp(120))
-        self.allow_stretch = True
-        self.keep_ratio = False
+        self.size = (dp(120), dp(140))
+        self.spacing = dp(2)
         self.bind(on_touch_down=self.on_click)
         self.is_selected = False
+
+        # Image widget
+        self.img = Image(
+            size_hint_y=None,
+            height=dp(120),
+            allow_stretch=True,
+            keep_ratio=False,
+        )
+        self.add_widget(self.img)
+
+        # Label for tries count (shown after solving)
+        self.tries_label = Label(
+            text="",
+            size_hint_y=None,
+            height=dp(16),
+            font_size="10sp",
+            color=(0.3, 0.3, 0.3, 1),
+        )
+        self.add_widget(self.tries_label)
 
         # Load and display thumbnail
         self.load_thumbnail()
@@ -96,14 +115,17 @@ class PuzzleThumbnail(Image):
     def load_thumbnail(self):
         """Load or create appropriate thumbnail based on solve status"""
         try:
-            # Check if puzzle is solved
             is_solved = self.puzzle_data.get("solved", False)
             if is_solved and "solve_result" in self.puzzle_data:
-                # Create solved thumbnail (best solution visualization)
                 self._create_solved_thumbnail()
+                result = self.puzzle_data["solve_result"]
+                if result.num_guesses > 0:
+                    self.tries_label.text = f"{result.num_guesses} tries"
+                else:
+                    self.tries_label.text = "failed"
             else:
-                # Create unsolved thumbnail (source pieces layout)
                 self._create_unsolved_thumbnail()
+                self.tries_label.text = ""
         except Exception as e:
             print(
                 f"Error creating thumbnail for puzzle {self.puzzle_data.get('id', '?')}: {e}"
@@ -131,9 +153,11 @@ class PuzzleThumbnail(Image):
                 thumbnail = cv2.resize(rendered_color, (120, 120))
 
                 # Save and load
-                temp_path = f"temp/solved_thumb_{self.puzzle_data.get('id', 0)}.png"
+                puzzle_dir = self.puzzle_data.get("directory", ".")
+                temp_path = os.path.join(puzzle_dir, "solved_thumb.png")
                 cv2.imwrite(temp_path, thumbnail)
-                self.source = temp_path
+                self.img.source = temp_path
+                self.img.reload()
             else:
                 self._create_placeholder()
         except Exception as e:
@@ -141,59 +165,15 @@ class PuzzleThumbnail(Image):
             self._create_placeholder()
 
     def _create_unsolved_thumbnail(self):
-        """Create thumbnail showing source pieces layout (like left side of visualizer)"""
+        """Create thumbnail showing source pieces layout"""
         try:
-            # Check if we have the debug image saved
-            debug_path = self.puzzle_data.get("debug_path")
-            if debug_path and os.path.exists(debug_path):
-                # Use the debug image which shows the cuts
-                debug_img = cv2.imread(debug_path)
-                if debug_img is not None:
-                    # Resize to thumbnail size
-                    thumbnail = cv2.resize(debug_img, (120, 120))
+            # Use the pre-saved thumbnail directly
+            thumbnail_path = self.puzzle_data.get("thumbnail_path")
+            if thumbnail_path and os.path.exists(thumbnail_path):
+                self.img.source = thumbnail_path
+                return
 
-                    # Save and load
-                    temp_path = (
-                        f"temp/unsolved_thumb_{self.puzzle_data.get('id', 0)}.png"
-                    )
-                    cv2.imwrite(temp_path, thumbnail)
-                    self.source = temp_path
-                    return
-
-            # Fallback: create from piece images if available
-            piece_paths = self.puzzle_data.get("piece_paths", [])
-            if piece_paths:
-                # Create a simple grid layout of pieces
-                thumbnail = np.ones((120, 120, 3), dtype=np.uint8) * 240
-
-                # Load and arrange first few pieces in a grid
-                pieces_per_row = 2
-                piece_size = 50
-                start_x, start_y = 10, 10
-
-                for i, piece_path in enumerate(piece_paths[:4]):  # Show max 4 pieces
-                    if os.path.exists(piece_path):
-                        piece_img = cv2.imread(piece_path)
-                        if piece_img is not None:
-                            piece_small = cv2.resize(
-                                piece_img, (piece_size, piece_size)
-                            )
-                            row = i // pieces_per_row
-                            col = i % pieces_per_row
-                            y = start_y + row * (piece_size + 5)
-                            x = start_x + col * (piece_size + 5)
-
-                            if y + piece_size <= 120 and x + piece_size <= 120:
-                                thumbnail[y : y + piece_size, x : x + piece_size] = (
-                                    piece_small
-                                )
-
-                # Save and load
-                temp_path = f"temp/unsolved_thumb_{self.puzzle_data.get('id', 0)}.png"
-                cv2.imwrite(temp_path, thumbnail)
-                self.source = temp_path
-            else:
-                self._create_placeholder()
+            self._create_placeholder()
         except Exception as e:
             print(f"Error creating unsolved thumbnail: {e}")
             self._create_placeholder()
@@ -211,9 +191,10 @@ class PuzzleThumbnail(Image):
                 (0, 0, 0),
                 2,
             )
-            temp_path = f"temp/thumb_{self.puzzle_data.get('id', 0)}.png"
+            puzzle_dir = self.puzzle_data.get("directory", ".")
+            temp_path = os.path.join(puzzle_dir, "placeholder_thumb.png")
             cv2.imwrite(temp_path, placeholder)
-            self.source = temp_path
+            self.img.source = temp_path
         except Exception as e:
             print(f"Error creating placeholder: {e}")
 
@@ -255,7 +236,7 @@ class PuzzleGrid(GridLayout):
         self.spacing = dp(10)
         self.padding = dp(10)
         self.size_hint_y = None
-        self.height = dp(140)
+        self.height = dp(155)
         self.bind(minimum_height=self._update_height)
         self.puzzles = []
         self.selected_puzzle = None
@@ -276,7 +257,7 @@ class PuzzleGrid(GridLayout):
                 if isinstance(self.spacing, (list, tuple))
                 else self.spacing
             )
-            self.height = rows * dp(140) + (rows - 1) * spacing_value
+            self.height = rows * dp(155) + (rows - 1) * spacing_value
 
             print(f"  Successfully added puzzle to grid (total: {len(self.puzzles)})")
         except Exception as e:
@@ -291,7 +272,7 @@ class PuzzleGrid(GridLayout):
         self.puzzles = []
         self.selected_puzzle = None
         self.selected_thumbnail = None
-        self.height = dp(140)
+        self.height = dp(155)
 
     def on_puzzle_selected(self, puzzle_data, thumbnail_widget):
         """Handle puzzle selection"""

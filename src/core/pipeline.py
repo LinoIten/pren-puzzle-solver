@@ -60,8 +60,9 @@ class PuzzlePipeline:
         self.puzzle_dir = puzzle_dir  # Directory containing a saved puzzle
 
         # Initialize solver components - renderer will be created with target
-        self.tuning = config.tuning
         self.resolution = config.resolution
+        # Alle Pixel-basierten Tuning-Parameter an die Aufloesung anpassen
+        self.tuning = config.tuning.scaled(self.resolution.scale)
         self.guess_generator = GuessGenerator(rotation_step=90)
         self.renderer = None  # Will be created after we have target
         self.scorer = PlacementScorer(
@@ -197,10 +198,11 @@ class PuzzlePipeline:
             for idx, piece_path in enumerate(sorted(existing_pieces)):
                 piece_id = int(piece_path.stem.split("_")[1])
 
-                # Load to get dimensions
+                # Load to get dimensions (Pixel an Aufloesung anpassen)
                 img = cv2.imread(str(piece_path), cv2.IMREAD_UNCHANGED)
                 if img is not None:
-                    piece_h, piece_w = img.shape[:2]
+                    piece_h = max(1, int(round(img.shape[0] * self.resolution.scale)))
+                    piece_w = max(1, int(round(img.shape[1] * self.resolution.scale)))
 
                     # Assign corner
                     corner_idx = idx % len(corner_positions)
@@ -217,7 +219,7 @@ class PuzzlePipeline:
         self.logger.info("  → Segmentierung...")
         self.logger.info("  → Feature-Extraktion...")
 
-        piece_ids, piece_shapes = generator.load_pieces_for_solver()
+        piece_ids, piece_shapes = generator.load_pieces_for_solver(scale=self.resolution.scale)
 
         # NOW analyze the pieces (this is where the analysis happens)
         PieceAnalyzer.analyze_all_pieces(puzzle_pieces, piece_shapes, tuning=self.tuning)
