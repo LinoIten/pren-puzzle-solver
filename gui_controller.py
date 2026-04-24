@@ -314,7 +314,14 @@ class ControllerGUI(BoxLayout):
         # Initialize components
         self.logger = setup_logger("controller_gui")
         self.config = Config()
-        self.puzzle_generator = MockPuzzleGenerator(output_dir="data/mock_pieces")
+        r = self.config.resolution
+        self.puzzle_generator = MockPuzzleGenerator(
+            output_dir="data/mock_pieces",
+            a4_width=r._dim(r.a4_width_mm, r.native_px_per_mm),
+            a4_height=r._dim(r.a4_height_mm, r.native_px_per_mm),
+            a5_width=r._dim(r.a5_width_mm, r.native_px_per_mm),
+            a5_height=r._dim(r.a5_height_mm, r.native_px_per_mm),
+        )
         self.current_puzzle_set = None
         self.solve_results = []
         self.is_solving = False
@@ -588,8 +595,15 @@ class ControllerGUI(BoxLayout):
         puzzle_dir = Path(f"data/generated_puzzles/puzzle_{index}")
         puzzle_dir.mkdir(parents=True, exist_ok=True)
 
-        # Generate and save puzzle (no analysis happens here)
-        generator = MockPuzzleGenerator(output_dir=str(puzzle_dir))
+        # Generate and save puzzle at native resolution (no analysis happens here)
+        r = self.config.resolution
+        generator = MockPuzzleGenerator(
+            output_dir=str(puzzle_dir),
+            a4_width=r._dim(r.a4_width_mm, r.native_px_per_mm),
+            a4_height=r._dim(r.a4_height_mm, r.native_px_per_mm),
+            a5_width=r._dim(r.a5_width_mm, r.native_px_per_mm),
+            a5_height=r._dim(r.a5_height_mm, r.native_px_per_mm),
+        )
         full_image, piece_images, debug_image, puzzle_pieces = (
             generator.generate_puzzle_with_positions()
         )

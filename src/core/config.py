@@ -30,43 +30,90 @@ class SolverConfig:
 
 @dataclass
 class ResolutionConfig:
-    """Globale Aufloesung fuer den Solver (Performance-Tuning).
+    """Aufloesung des Puzzle-Solvers.
 
-    scale=1.0 entspricht 2 px/mm (A4 = 420x594, A5 = 840x594).
-    Kleinere Werte beschleunigen das Scoring quadratisch (weniger Pixel),
-    reduzieren aber die Praezision. Die Scorer-Gewichte werden automatisch
-    mit 1/scale^2 multipliziert, damit `score_threshold` unabhaengig von
-    der Aufloesung vergleichbar bleibt.
+    native_px_per_mm: Aufloesung der Eingangsbilder.
+        Mock-PNGs: 2.0 px/mm. Roboter-Kamera: aus px/mm-Metadaten setzen.
+
+    solver_px_per_mm: Feste Ziel-Aufloesung fuer den Solver.
+        Eingangsbilder werden auf diesen Wert herunterskaliert.
+        Niedrigerer Wert = schneller, aber ungenauer.
+
+    finetune_max_px_per_mm: Maximale Aufloesung fuer den Feinabstimmungsschritt.
+        Falls native_px_per_mm <= finetune_max_px_per_mm: native Bilder direkt
+        verwenden (keine zusaetzliche Skalierung).
+        Falls native_px_per_mm > finetune_max_px_per_mm: auf diesen Wert
+        herunterskalieren (schuetzt vor sehr hochauflsenden Kameras).
     """
 
-    scale: float = 0.5
+    native_px_per_mm: float = 2.0          # Aufloesung der Quellbilder
+    solver_px_per_mm: float = 1.0          # Solver-Zielaufloesung
+    finetune_max_px_per_mm: float = 2.0    # Obergrenze fuer Fine-Tuning
 
-    # Basis-Dimensionen bei scale=1.0 (2 Pixel pro mm)
-    base_a4_width: int = 420
-    base_a4_height: int = 594
-    base_a5_width: int = 840
-    base_a5_height: int = 594
+    # Physikalische Abmessungen in mm (A4 = 210x297, A5 = 148x210)
+    a4_width_mm: int = 210
+    a4_height_mm: int = 297
+    a5_width_mm: int = 420   # A5-Quelle = doppelt so breit wie A4-Ziel
+    a5_height_mm: int = 297
+
+    def _dim(self, mm: int, px_per_mm: float) -> int:
+        return max(1, int(round(mm * px_per_mm)))
+
+    # --- Solver-Aufloesung ---
+
+    @property
+    def solver_scale(self) -> float:
+        """Skalierungsfaktor Eingang→Solver (< 1 = verkleinern)."""
+        return self.solver_px_per_mm / self.native_px_per_mm
 
     @property
     def a4_width(self) -> int:
-        return max(1, int(round(self.base_a4_width * self.scale)))
+        return self._dim(self.a4_width_mm, self.solver_px_per_mm)
 
     @property
     def a4_height(self) -> int:
-        return max(1, int(round(self.base_a4_height * self.scale)))
+        return self._dim(self.a4_height_mm, self.solver_px_per_mm)
 
     @property
     def a5_width(self) -> int:
-        return max(1, int(round(self.base_a5_width * self.scale)))
+        return self._dim(self.a5_width_mm, self.solver_px_per_mm)
 
     @property
     def a5_height(self) -> int:
-        return max(1, int(round(self.base_a5_height * self.scale)))
+        return self._dim(self.a5_height_mm, self.solver_px_per_mm)
 
     @property
     def score_weight_multiplier(self) -> float:
-        """Skalierungsfaktor fuer Scorer-Gewichte: 1/scale^2."""
-        return 1.0 / (self.scale**2)
+        return 1.0 / (self.solver_px_per_mm ** 2)
+
+    # --- Fine-Tuning-Aufloesung ---
+
+    @property
+    def finetune_px_per_mm(self) -> float:
+        """Tatsaechliche Fine-Tuning-Aufloesung: native oder gekappt."""
+        return min(self.native_px_per_mm, self.finetune_max_px_per_mm)
+
+    @property
+    def finetune_scale(self) -> float:
+        """Skalierungsfaktor Eingang→Fine-Tuning."""
+        return self.finetune_px_per_mm / self.native_px_per_mm
+
+    @property
+    def fine_a4_width(self) -> int:
+        return self._dim(self.a4_width_mm, self.finetune_px_per_mm)
+
+    @property
+    def fine_a4_height(self) -> int:
+        return self._dim(self.a4_height_mm, self.finetune_px_per_mm)
+
+    @property
+    def finetune_weight_multiplier(self) -> float:
+        return 1.0 / (self.finetune_px_per_mm ** 2)
+
+    @property
+    def finetune_ratio(self) -> float:
+        """Koordinaten solver→finetune (zum Hochskalieren der Placements)."""
+        return self.finetune_px_per_mm / self.solver_px_per_mm
 
 
 @dataclass
@@ -116,6 +163,13 @@ class SolverTuning:
     slide_positions: int = 20  # Gitterpositionen pro Achse
     center_piece_margin: int = 50  # Pixel vom Rand
 
+    # --- Fine-Tuning (fine_tuner.py) ---
+    finetune_xy_range: int = 4   # Pixel bei finetune_scale=1.0 (±2mm)
+    finetune_xy_step: int = 2    # Pixel pro Schritt → 5 Positionen pro Achse
+    finetune_theta_range: float = 3.0   # ±Grad
+    finetune_theta_step: float = 1.0    # Grad pro Schritt → 7 Winkel
+    finetune_max_passes: int = 3        # pro Durchlauf: 6 Teile × 25xy × 7theta = 1050
+
     def scaled(self, resolution_scale: float) -> "SolverTuning":
         """Gibt eine Kopie zurueck, bei der alle Pixel-basierten Parameter mit
         resolution_scale skaliert sind. Wird von der Pipeline benutzt, damit
@@ -137,7 +191,6 @@ class SolverTuning:
         t.fitter_outside_limit = px(self.fitter_outside_limit)
         t.fitter_edge_touch_distance = px(self.fitter_edge_touch_distance)
         t.center_piece_margin = px(self.center_piece_margin)
-
         return t
 
 

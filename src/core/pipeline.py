@@ -12,6 +12,7 @@ from typing import Optional
 import cv2
 import numpy as np
 
+from src.solver.fine_tuner import FineTuner
 from src.solver.iterative_solver import IterativeSolver
 from src.solver.movement_analyzer import calculate_movement_data_for_visualizer
 from src.solver.piece_analyzer import PieceAnalyzer
@@ -62,7 +63,7 @@ class PuzzlePipeline:
         # Initialize solver components - renderer will be created with target
         self.resolution = config.resolution
         # Alle Pixel-basierten Tuning-Parameter an die Aufloesung anpassen
-        self.tuning = config.tuning.scaled(self.resolution.scale)
+        self.tuning = config.tuning.scaled(self.resolution.solver_scale)
         self.guess_generator = GuessGenerator(rotation_step=90)
         self.renderer = None  # Will be created after we have target
         self.scorer = PlacementScorer(
@@ -90,12 +91,12 @@ class PuzzlePipeline:
                 
             # Phase 1: Vision
             self.logger.info("Phase 1: Bildverarbeitung")
-            pieces, piece_shapes, corner_info, puzzle_pieces = self._process_vision()
+            pieces, piece_shapes, piece_shapes_fine, corner_info, puzzle_pieces = self._process_vision()
 
             # Phase 2: Solving
             self.logger.info("Phase 2: Puzzle loesen")
             solution = self._solve_puzzle(
-                pieces, piece_shapes, corner_info, puzzle_pieces
+                pieces, piece_shapes, piece_shapes_fine, corner_info, puzzle_pieces
             )
 
             # Phase 3: Validation
@@ -186,7 +187,7 @@ class PuzzlePipeline:
             # A5 dimensions (aus ResolutionConfig skaliert)
             a5_width = self.resolution.a5_width
             a5_height = self.resolution.a5_height
-            margin = max(1, int(round(80 * self.resolution.scale)))
+            margin = max(1, int(round(80 * self.resolution.solver_scale)))
 
             corner_positions = [
                 (margin, margin),
@@ -201,8 +202,8 @@ class PuzzlePipeline:
                 # Load to get dimensions (Pixel an Aufloesung anpassen)
                 img = cv2.imread(str(piece_path), cv2.IMREAD_UNCHANGED)
                 if img is not None:
-                    piece_h = max(1, int(round(img.shape[0] * self.resolution.scale)))
-                    piece_w = max(1, int(round(img.shape[1] * self.resolution.scale)))
+                    piece_h = max(1, int(round(img.shape[0] * self.resolution.solver_scale)))
+                    piece_w = max(1, int(round(img.shape[1] * self.resolution.solver_scale)))
 
                     # Assign corner
                     corner_idx = idx % len(corner_positions)
@@ -219,9 +220,13 @@ class PuzzlePipeline:
         self.logger.info("  → Segmentierung...")
         self.logger.info("  → Feature-Extraktion...")
 
-        piece_ids, piece_shapes = generator.load_pieces_for_solver(scale=self.resolution.scale)
+        # Coarse copy for solver (fast)
+        piece_ids, piece_shapes = generator.load_pieces_for_solver(scale=self.resolution.solver_scale)
 
-        # NOW analyze the pieces (this is where the analysis happens)
+        # Full-res copy kept separately for fine-tuning
+        _, piece_shapes_fine = generator.load_pieces_for_solver(scale=self.resolution.finetune_scale)
+
+        # Analysis uses coarse shapes (classification does not need full res)
         PieceAnalyzer.analyze_all_pieces(puzzle_pieces, piece_shapes, tuning=self.tuning)
 
         # Print analysis results
@@ -257,10 +262,9 @@ class PuzzlePipeline:
         self.logger.info(f"\n  → {len(piece_ids)} Teile geladen und analysiert")
         self.logger.info("=" * 80 + "\n")
 
-        # Return empty dict for backward compatibility
-        return piece_ids, piece_shapes, {}, puzzle_pieces
+        return piece_ids, piece_shapes, piece_shapes_fine, {}, puzzle_pieces
 
-    def _solve_puzzle(self, pieces, piece_shapes, piece_corner_info, puzzle_pieces):
+    def _solve_puzzle(self, pieces, piece_shapes, piece_shapes_fine, piece_corner_info, puzzle_pieces):
         """Puzzle loesen mit iterativem Ansatz"""
         self.logger.info("  → Layout berechnen...")
 
@@ -306,41 +310,49 @@ class PuzzlePipeline:
         else:
             self.logger.info(f"  ✓ Loesung gefunden mit Score: {solution.score:.2f}")
 
-        # Solver already updated place_pose on PuzzlePiece objects
-        for piece in puzzle_pieces:
-            if piece.place_pose:
-                self.logger.debug(
-                    f"  Piece {piece.id}: {piece.pick_pose} → {piece.place_pose}"
-                )
+        # Phase 2b: Fine-tuning auf voller Aufloesung
+        self.logger.info("Phase 2b: Feinabstimmung (volle Aufloesung)")
+        all_guesses_for_finetune = solution.all_guesses if solution.all_guesses is not None else []
+        fine_placements, fine_score = self._finetune_solution(
+            solution.remaining_placements,
+            piece_shapes_fine,
+            target,
+            all_guesses_for_finetune,
+        )
+        # fine_placements are in fine-coordinate space.
+        # Convert back to coarse for the visualizer/pipeline dict.
+        ratio = self.resolution.finetune_ratio
+        coarse_fine_placements = [
+            {**p, "x": p["x"] / ratio, "y": p["y"] / ratio} for p in fine_placements
+        ]
+        solution.score = fine_score
 
-        # NEW: Use ALL guesses collected during solving
-        all_guesses = solution.all_guesses if solution.all_guesses else []
+        # All guesses (coarse coords) — fine-tuner already appended its steps
+        all_guesses = all_guesses_for_finetune
 
-        # Add final solution if it's not already in the list
-        if solution.remaining_placements:
-            if not all_guesses or all_guesses[-1] != solution.remaining_placements:
-                all_guesses.append(solution.remaining_placements)
+        # Append final coarse result if not already there
+        if coarse_fine_placements:
+            if not all_guesses or all_guesses[-1] != coarse_fine_placements:
+                all_guesses.append(coarse_fine_placements)
 
         self.logger.info(f"  → Collected {len(all_guesses)} guesses for visualization")
 
-        # Find best guess and its index
         best_score = solution.score
-        best_guess = solution.remaining_placements
+        best_guess = coarse_fine_placements
         best_guess_index = len(all_guesses) - 1 if all_guesses else 0
 
-        # Populate place_pose on PuzzlePiece objects from solver results
+        # Populate place_pose with fine coordinates (precision output for robot)
         self.logger.info(f"  → Populating place_pose on {len(puzzle_pieces)} pieces")
-        for placement in solution.remaining_placements:
+        piece_lookup = {int(p.id): p for p in puzzle_pieces}
+        for placement in fine_placements:
             piece_id = placement["piece_id"]
-            # Find the matching PuzzlePiece object
-            for piece in puzzle_pieces:
-                if int(piece.id) == piece_id:
-                    piece.place_pose = Pose(
-                        x=placement["x"], y=placement["y"], theta=placement["theta"]
-                    )
-                    piece.confidence = 1.0 if solution.score > self.tuning.score_threshold else 0.5
-                    self.logger.debug(f"    Piece {piece_id}: {piece.place_pose}")
-                    break
+            if piece_id in piece_lookup:
+                piece = piece_lookup[piece_id]
+                piece.place_pose = Pose(
+                    x=placement["x"], y=placement["y"], theta=placement["theta"]
+                )
+                piece.confidence = 1.0 if solution.score > self.tuning.score_threshold else 0.5
+                self.logger.debug(f"    Piece {piece_id}: {piece.place_pose}")
 
         # Print movement instructions using PuzzlePiece objects
         self._print_movement_instructions_from_pieces(puzzle_pieces, surfaces)
@@ -381,7 +393,7 @@ class PuzzlePipeline:
         source_height = self.resolution.a5_height
 
         # Global surface size (side by side with padding)
-        padding = max(1, int(round(100 * self.resolution.scale)))
+        padding = max(1, int(round(100 * self.resolution.solver_scale)))
         global_width = source_width + target_width + padding * 3
         global_height = max(source_height, target_height) + padding * 2
 
@@ -495,6 +507,59 @@ class PuzzlePipeline:
                 self.logger.info(f"  Direction: {angle:.1f}° from horizontal")
 
         self.logger.info("\n" + "=" * 80 + "\n")
+
+    def _finetune_solution(self, placements, piece_shapes_fine, target_coarse, all_guesses):
+        """Feinabstimmung auf voller Aufloesung.
+
+        Hochskalierte Koordinaten (fine-space), Suchschritte skaliert nach
+        finetune_scale. Snapshots nach jeder Teilverbesserung werden als
+        Coarse-Koordinaten an all_guesses angehaengt.
+        """
+        if not placements:
+            return placements, 0.0
+
+        ratio = self.resolution.finetune_ratio          # coarse→fine
+        coarse_ratio = 1.0 / ratio                      # fine→coarse
+        fs = self.resolution.finetune_px_per_mm
+
+        # Skaliere Koordinaten in fine-Aufloesung
+        fine_placements = [
+            {**p, "x": p["x"] * ratio, "y": p["y"] * ratio}
+            for p in placements
+        ]
+
+        fine_target = np.ones(
+            (self.resolution.fine_a4_height, self.resolution.fine_a4_width),
+            dtype=np.uint8,
+        )
+        fine_renderer = GuessRenderer(
+            width=self.resolution.fine_a4_width,
+            height=self.resolution.fine_a4_height,
+        )
+        fine_scorer = PlacementScorer(
+            overlap_penalty=self.config.tuning.overlap_penalty,
+            coverage_reward=self.config.tuning.coverage_reward,
+            gap_penalty=self.config.tuning.gap_penalty,
+            weight_multiplier=self.resolution.finetune_weight_multiplier,
+        )
+
+        raw = self.config.tuning  # unscaled defaults
+        tuner = FineTuner(
+            renderer=fine_renderer,
+            scorer=fine_scorer,
+            xy_range=max(1, int(round(raw.finetune_xy_range * fs))),
+            xy_step=max(1, int(round(raw.finetune_xy_step * fs))),
+            theta_range=raw.finetune_theta_range,
+            theta_step=raw.finetune_theta_step,
+            max_passes=raw.finetune_max_passes,
+        )
+        return tuner.finetune(
+            fine_placements,
+            piece_shapes_fine,
+            fine_target,
+            all_guesses=all_guesses,
+            coarse_ratio=coarse_ratio,
+        )
 
     def _validate_solution(self, solution):
         """Loesung validieren"""
