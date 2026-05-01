@@ -5,7 +5,7 @@ Drop-in replacement for src.utils.puzzle_piece.PuzzlePiece
 
 from typing import Optional, List, Dict, Tuple
 from dataclasses import dataclass, field
-from src.utils.pose import Pose
+from src.utils.Pose import Pose
 
 
 @dataclass

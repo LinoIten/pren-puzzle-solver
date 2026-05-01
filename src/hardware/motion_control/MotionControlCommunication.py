@@ -99,10 +99,6 @@ def wait_for_robot_start(port: str, baudrate: int) -> bool:
     """
     import serial
     
-    # logger importieren, falls nicht schon oben geschehen
-    import logging
-    logger = logging.getLogger(__name__)
-    
     logger.info("Warte auf Hardware-Start-Knopf am Roboter...")
     
     # timeout=None bedeutet: Endlos warten, bis Daten kommen

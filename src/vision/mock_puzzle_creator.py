@@ -4,7 +4,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from src.utils.pose import Pose
+from src.utils.Pose import Pose
 from src.utils.puzzle_piece import PuzzlePiece
 from src.vision.cut_patterns import generate_sharp_cut, generate_square_cut, generate_wavy_cut
 

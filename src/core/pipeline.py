@@ -16,7 +16,7 @@ from src.solver.fine_tuner import FineTuner
 from src.solver.iterative_solver import IterativeSolver
 from src.solver.movement_analyzer import calculate_movement_data_for_visualizer
 from src.solver.piece_analyzer import PieceAnalyzer
-from src.utils.pose import Pose
+from src.utils.Pose import Pose
 from src.utils.puzzle_piece import PuzzlePiece
 
 from ..solver.guess_generator import GuessGenerator
