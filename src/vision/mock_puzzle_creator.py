@@ -352,51 +352,89 @@ class MockPuzzleGenerator:
 
         return saved_paths
 
-    def load_pieces_for_solver(self, piece_paths: list = None, scale: float = 1.0) -> tuple:  # type: ignore
+    def load_pieces_for_solver(
+            self,
+            piece_paths: list = None,
+            scale: float | None = 1.0,
+            target_area_px: int | None = None,
+    ) -> tuple:
         """
-        Load saved pieces and prepare them for the solver.
+        Lädt gespeicherte Puzzleteile und bereitet sie für den Solver vor.
 
-        Args:
-            piece_paths: Optional list of paths to piece images.
-            scale: Resize factor applied to each mask (e.g. 0.5 halves both dims).
-                   Use ResolutionConfig.scale so pieces match the solver canvas.
-
-        Returns:
-            (piece_ids, piece_shapes_dict)
+        Wichtig:
+        - Graustufenmasken werden direkt akzeptiert.
+        - RGBA-Bilder verwenden den Alpha-Kanal.
+        - RGB/BGR-Bilder werden zu Graustufen konvertiert.
+        - Wenn target_area_px gesetzt ist, werden alle Teile gemeinsam so skaliert,
+          dass ihre Gesamtflaeche zur Ziel-Flaeche passt.
         """
+
         if piece_paths is None:
-            # Load all pieces from output directory
             piece_paths = sorted(self.output_dir.glob("piece_*.png"))
 
-        piece_shapes = {}
-        piece_ids = []
+        raw_masks = []
+        raw_ids = []
 
-        for i, path in enumerate(piece_paths):
-            # Load image with alpha channel
+        for fallback_id, path in enumerate(piece_paths):
             image = cv2.imread(str(path), cv2.IMREAD_UNCHANGED)
 
             if image is None:
                 continue
 
-            # Extract alpha channel as mask
-            if image.shape[2] == 4:
+            # ID aus Dateiname lesen, z.B. piece_0.png -> 0
+            try:
+                piece_id = int(path.stem.split("_")[1])
+            except (IndexError, ValueError):
+                piece_id = fallback_id
+
+            # Maske extrahieren
+            if len(image.shape) == 2:
+                mask = image
+
+            elif image.shape[2] == 4:
                 mask = image[:, :, 3]
+
             else:
-                # Convert to grayscale and threshold
                 gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
                 _, mask = cv2.threshold(gray, 1, 255, cv2.THRESH_BINARY)
 
-            # Normalize to 0 and 1
+            # Normalisieren auf 0/1
             mask = (mask > 127).astype(np.uint8)
 
-            # An die Aufloesung anpassen, damit Stuecke zur Ziel-Canvas passen
+            raw_masks.append(mask)
+            raw_ids.append(piece_id)
+
+        if not raw_masks:
+            return [], {}
+
+        # Automatische Flaechenskalierung:
+        # Die Summe aller Teile soll etwa der Ziel-Flaeche entsprechen.
+        if target_area_px is not None:
+            current_area_px = sum(int(mask.sum()) for mask in raw_masks)
+
+            if current_area_px > 0:
+                scale = float(np.sqrt(target_area_px / current_area_px))
+                print(
+                    f"Auto piece scale: {scale:.4f} "
+                    f"(current area={current_area_px}, target area={target_area_px})"
+                )
+            else:
+                scale = 1.0
+
+        if scale is None:
+            scale = 1.0
+
+        piece_shapes = {}
+        piece_ids = []
+
+        for piece_id, mask in zip(raw_ids, raw_masks):
             if scale != 1.0:
                 new_h = max(1, int(round(mask.shape[0] * scale)))
                 new_w = max(1, int(round(mask.shape[1] * scale)))
                 mask = cv2.resize(mask, (new_w, new_h), interpolation=cv2.INTER_NEAREST)
 
-            piece_shapes[i] = mask
-            piece_ids.append(i)
+            piece_shapes[piece_id] = mask
+            piece_ids.append(piece_id)
 
         return piece_ids, piece_shapes
 

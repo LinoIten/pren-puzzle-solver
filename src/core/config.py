@@ -24,46 +24,33 @@ class SolverConfig:
     """Konfiguration für Puzzle-Solver"""
 
     max_solve_time: float = 90.0  # 1.5 Minute
-    rotation_step: int = 15  # Rotation increment in degrees
+    rotation_step: int = 13  # Rotation increment in degrees
     coarse_rotation_step: int = 45  # Coarser for initial searchn
 
 
 @dataclass
 class ResolutionConfig:
-    """Aufloesung des Puzzle-Solvers.
+    """Aufloesung des Puzzle-Solvers."""
 
-    native_px_per_mm: Aufloesung der Eingangsbilder.
-        Mock-PNGs: 2.0 px/mm. Roboter-Kamera: aus px/mm-Metadaten setzen.
+    # Eingangsbilder aus cam_module.py sind hochaufgeloest.
+    # Die echte Groesse wird unten zusaetzlich ueber Flaeche automatisch korrigiert.
+    native_px_per_mm: float = 10.0
+    solver_px_per_mm: float = 1.0
+    finetune_max_px_per_mm: float = 2.0
 
-    solver_px_per_mm: Feste Ziel-Aufloesung fuer den Solver.
-        Eingangsbilder werden auf diesen Wert herunterskaliert.
-        Niedrigerer Wert = schneller, aber ungenauer.
+    # A4-Kamera-/Ablageflaeche, quer
+    a4_width_mm: int = 297
+    a4_height_mm: int = 210
 
-    finetune_max_px_per_mm: Maximale Aufloesung fuer den Feinabstimmungsschritt.
-        Falls native_px_per_mm <= finetune_max_px_per_mm: native Bilder direkt
-        verwenden (keine zusaetzliche Skalierung).
-        Falls native_px_per_mm > finetune_max_px_per_mm: auf diesen Wert
-        herunterskalieren (schuetzt vor sehr hochauflsenden Kameras).
-    """
-
-    native_px_per_mm: float = 2.0          # Aufloesung der Quellbilder
-    solver_px_per_mm: float = 1.0          # Solver-Zielaufloesung
-    finetune_max_px_per_mm: float = 2.0    # Obergrenze fuer Fine-Tuning
-
-    # Physikalische Abmessungen in mm (A4 = 210x297, A5 = 148x210)
-    a4_width_mm: int = 210
-    a4_height_mm: int = 297
-    a5_width_mm: int = 420   # A5-Quelle = doppelt so breit wie A4-Ziel
-    a5_height_mm: int = 297
+    # Echtes Puzzle-Ziel: A5 quer
+    a5_width_mm: int = 210
+    a5_height_mm: int = 148
 
     def _dim(self, mm: int, px_per_mm: float) -> int:
         return max(1, int(round(mm * px_per_mm)))
 
-    # --- Solver-Aufloesung ---
-
     @property
     def solver_scale(self) -> float:
-        """Skalierungsfaktor Eingang→Solver (< 1 = verkleinern)."""
         return self.solver_px_per_mm / self.native_px_per_mm
 
     @property
@@ -86,16 +73,12 @@ class ResolutionConfig:
     def score_weight_multiplier(self) -> float:
         return 1.0 / (self.solver_px_per_mm ** 2)
 
-    # --- Fine-Tuning-Aufloesung ---
-
     @property
     def finetune_px_per_mm(self) -> float:
-        """Tatsaechliche Fine-Tuning-Aufloesung: native oder gekappt."""
         return min(self.native_px_per_mm, self.finetune_max_px_per_mm)
 
     @property
     def finetune_scale(self) -> float:
-        """Skalierungsfaktor Eingang→Fine-Tuning."""
         return self.finetune_px_per_mm / self.native_px_per_mm
 
     @property
@@ -107,12 +90,19 @@ class ResolutionConfig:
         return self._dim(self.a4_height_mm, self.finetune_px_per_mm)
 
     @property
+    def fine_a5_width(self) -> int:
+        return self._dim(self.a5_width_mm, self.finetune_px_per_mm)
+
+    @property
+    def fine_a5_height(self) -> int:
+        return self._dim(self.a5_height_mm, self.finetune_px_per_mm)
+
+    @property
     def finetune_weight_multiplier(self) -> float:
         return 1.0 / (self.finetune_px_per_mm ** 2)
 
     @property
     def finetune_ratio(self) -> float:
-        """Koordinaten solver→finetune (zum Hochskalieren der Placements)."""
         return self.finetune_px_per_mm / self.solver_px_per_mm
 
 

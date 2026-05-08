@@ -34,7 +34,7 @@ def main():
             config.vision.regenerate_mock = True
         if _six_pieces:
             config.vision.num_cuts = 3
-        pipeline = PuzzlePipeline(config, show_ui=True)  # Enable UI
+        pipeline = PuzzlePipeline(config, show_ui=True, puzzle_dir="input") #Enable UI
         result = pipeline.run()
         
         if result.success:

@@ -220,12 +220,22 @@ class PuzzlePipeline:
         self.logger.info("  → Segmentierung...")
         self.logger.info("  → Feature-Extraktion...")
 
-        # Coarse copy for solver (fast)
-        piece_ids, piece_shapes = generator.load_pieces_for_solver(scale=self.resolution.solver_scale)
+        # Coarse copy fuer Solver.
+        # Die Teile werden so skaliert, dass ihre Gesamtflaeche zur A5-Zielflaeche passt.
+        target_area_solver_px = self.resolution.a5_width * self.resolution.a5_height
 
-        # Full-res copy kept separately for fine-tuning
-        _, piece_shapes_fine = generator.load_pieces_for_solver(scale=self.resolution.finetune_scale)
+        piece_ids, piece_shapes = generator.load_pieces_for_solver(
+            scale=None,
+            target_area_px=target_area_solver_px,
+        )
 
+        # Fine copy fuer Feinabstimmung.
+        target_area_fine_px = self.resolution.fine_a5_width * self.resolution.fine_a5_height
+
+        _, piece_shapes_fine = generator.load_pieces_for_solver(
+            scale=None,
+            target_area_px=target_area_fine_px,
+        )
         # Analysis uses coarse shapes (classification does not need full res)
         PieceAnalyzer.analyze_all_pieces(puzzle_pieces, piece_shapes, tuning=self.tuning)
 
@@ -376,41 +386,38 @@ class PuzzlePipeline:
 
     def _create_surface_layout(self, num_pieces):
         """
-        Erstelle globale Oberflaeche mit Source (A5) und Target (A4) Bereichen.
-
-        Returns dict with:
-            - global: {width, height}
-            - source: {width, height, offset_x, offset_y, mask}
-            - target: {width, height, offset_x, offset_y, mask}
+        Erstelle globale Oberflaeche mit:
+        - Source: A4-Ablageflaeche, auf der die echten Teile liegen
+        - Target: A5-Zielflaeche, die geloest werden soll
         """
 
-        # A4 target dimensions (aus ResolutionConfig)
-        target_width = self.resolution.a4_width
-        target_height = self.resolution.a4_height
+        # Source = A4-Kamera-/Ablageflaeche
+        source_width = self.resolution.a4_width
+        source_height = self.resolution.a4_height
 
-        # A5 source dimensions (doppelt so breit wie A4)
-        source_width = self.resolution.a5_width
-        source_height = self.resolution.a5_height
+        # Target = echtes Puzzle-Ziel A5
+        target_width = self.resolution.a5_width
+        target_height = self.resolution.a5_height
 
-        # Global surface size (side by side with padding)
-        padding = max(1, int(round(100 * self.resolution.solver_scale)))
+        padding = max(1, int(round(100 * self.resolution.solver_px_per_mm)))
+
         global_width = source_width + target_width + padding * 3
         global_height = max(source_height, target_height) + padding * 2
 
-        # Calculate offsets (centered vertically)
         source_offset_x = padding
         source_offset_y = (global_height - source_height) // 2
 
         target_offset_x = source_width + padding * 2
         target_offset_y = (global_height - target_height) // 2
 
-        # Create masks
         target_mask = np.ones((target_height, target_width), dtype=np.uint8)
         source_mask = np.ones((source_height, source_width), dtype=np.uint8)
 
-        # Create global surface representation
         surfaces = {
-            "global": {"width": global_width, "height": global_height},
+            "global": {
+                "width": global_width,
+                "height": global_height,
+            },
             "source": {
                 "width": source_width,
                 "height": source_height,
@@ -529,12 +536,13 @@ class PuzzlePipeline:
         ]
 
         fine_target = np.ones(
-            (self.resolution.fine_a4_height, self.resolution.fine_a4_width),
+            (self.resolution.fine_a5_height, self.resolution.fine_a5_width),
             dtype=np.uint8,
         )
+
         fine_renderer = GuessRenderer(
-            width=self.resolution.fine_a4_width,
-            height=self.resolution.fine_a4_height,
+            width=self.resolution.fine_a5_width,
+            height=self.resolution.fine_a5_height,
         )
         fine_scorer = PlacementScorer(
             overlap_penalty=self.config.tuning.overlap_penalty,
