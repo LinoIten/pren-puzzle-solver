@@ -46,14 +46,14 @@ class ResolutionConfig:
         herunterskalieren (schuetzt vor sehr hochauflsenden Kameras).
     """
 
-    native_px_per_mm: float = 2.0          # Aufloesung der Quellbilder
-    solver_px_per_mm: float = 1.0          # Solver-Zielaufloesung
-    finetune_max_px_per_mm: float = 2.0    # Obergrenze fuer Fine-Tuning
+    native_px_per_mm: float = 2.0  # Aufloesung der Quellbilder
+    solver_px_per_mm: float = 1.0  # Solver-Zielaufloesung
+    finetune_max_px_per_mm: float = 2.0  # Obergrenze fuer Fine-Tuning
 
     # Physikalische Abmessungen in mm (A4 = 210x297, A5 = 148x210)
     a4_width_mm: int = 210
     a4_height_mm: int = 297
-    a5_width_mm: int = 420   # A5-Quelle = doppelt so breit wie A4-Ziel
+    a5_width_mm: int = 420  # A5-Quelle = doppelt so breit wie A4-Ziel
     a5_height_mm: int = 297
 
     def _dim(self, mm: int, px_per_mm: float) -> int:
@@ -84,7 +84,8 @@ class ResolutionConfig:
 
     @property
     def score_weight_multiplier(self) -> float:
-        return 1.0 / (self.solver_px_per_mm ** 2)
+        # 1/scale^2 kompensiert Downsampling, damit score_threshold auflösungsunabhängig bleibt
+        return 1.0 / (self.solver_scale**2)
 
     # --- Fine-Tuning-Aufloesung ---
 
@@ -108,7 +109,7 @@ class ResolutionConfig:
 
     @property
     def finetune_weight_multiplier(self) -> float:
-        return 1.0 / (self.finetune_px_per_mm ** 2)
+        return 1.0 / (self.finetune_scale**2)
 
     @property
     def finetune_ratio(self) -> float:
@@ -164,11 +165,11 @@ class SolverTuning:
     center_piece_margin: int = 50  # Pixel vom Rand
 
     # --- Fine-Tuning (fine_tuner.py) ---
-    finetune_xy_range: int = 4   # Pixel bei finetune_scale=1.0 (±2mm)
-    finetune_xy_step: int = 2    # Pixel pro Schritt → 5 Positionen pro Achse
-    finetune_theta_range: float = 3.0   # ±Grad
-    finetune_theta_step: float = 1.0    # Grad pro Schritt → 7 Winkel
-    finetune_max_passes: int = 3        # pro Durchlauf: 6 Teile × 25xy × 7theta = 1050
+    finetune_xy_range: int = 4  # Pixel bei finetune_scale=1.0 (±2mm)
+    finetune_xy_step: int = 2  # Pixel pro Schritt → 5 Positionen pro Achse
+    finetune_theta_range: float = 3.0  # ±Grad
+    finetune_theta_step: float = 1.0  # Grad pro Schritt → 7 Winkel
+    finetune_max_passes: int = 3  # pro Durchlauf: 6 Teile × 25xy × 7theta = 1050
 
     def scaled(self, resolution_scale: float) -> "SolverTuning":
         """Gibt eine Kopie zurueck, bei der alle Pixel-basierten Parameter mit
@@ -200,7 +201,7 @@ class HardwareConfig:
 
     serial_port: str = "/dev/serial0"
     baud_rate: int = 115200
-    enabled: bool = True  # In PREN1 deaktiviert
+    enabled: bool = True  # Lokal deaktiviert; True auf dem Roboter
 
 
 @dataclass

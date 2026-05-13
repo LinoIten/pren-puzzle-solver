@@ -6,6 +6,7 @@ Haupt-Pipeline orchestriert alle Schritte
 
 import os
 from dataclasses import dataclass
+from pathlib import Path
 from time import time
 from typing import Optional
 
@@ -23,6 +24,7 @@ from ..solver.guess_generator import GuessGenerator
 from ..solver.validation.scorer import PlacementScorer
 from ..ui.simulator.guess_renderer import GuessRenderer
 from ..utils.logger import setup_logger
+from ..vision.camera_loader import CameraLoader
 from ..vision.mock_puzzle_creator import MockPuzzleGenerator
 from .config import Config
 
@@ -58,12 +60,14 @@ class PuzzlePipeline:
         self.show_ui = show_ui
         self.puzzle_dir = puzzle_dir  # Directory containing a saved puzzle
 
-        # Initialize solver components - renderer will be created with target
-        self.resolution = config.resolution
-        # Alle Pixel-basierten Tuning-Parameter an die Aufloesung anpassen
-        self.tuning = config.tuning.scaled(self.resolution.solver_scale)
         self.guess_generator = GuessGenerator(rotation_step=90)
         self.renderer = None  # Will be created after we have target
+        self._init_resolution_components()
+
+    def _init_resolution_components(self):
+        """(Re-)initialisiert alle auflösungsabhängigen Komponenten."""
+        self.resolution = self.config.resolution
+        self.tuning = self.config.tuning.scaled(self.resolution.solver_scale)
         self.scorer = PlacementScorer(
             overlap_penalty=self.tuning.overlap_penalty,
             coverage_reward=self.tuning.coverage_reward,
@@ -158,6 +162,10 @@ class PuzzlePipeline:
         else:
             output_dir = "data/mock_pieces"
             self.logger.info(f"  → Using default directory: {output_dir}")
+
+        # Kamera-Eingang hat Vorrang vor Mock-Pieces
+        if CameraLoader.has_parts_json(output_dir):
+            return self._process_vision_camera(output_dir)
 
         generator = MockPuzzleGenerator(
             output_dir=output_dir,
@@ -279,6 +287,73 @@ class PuzzlePipeline:
                 if save_debug:
                     vis = PieceAnalyzer.visualize_corners(piece_shapes[piece_id], piece)
                     cv2.imwrite(str(debug_dir / f"piece_{piece_id}_analysis.png"), vis)
+
+        self.logger.info(f"\n  → {len(piece_ids)} Teile geladen und analysiert")
+        self.logger.info("=" * 80 + "\n")
+
+        return piece_ids, piece_shapes, piece_shapes_fine, {}, puzzle_pieces
+
+    def _process_vision_camera(self, input_dir: str):
+        """Kamera-Pfad: lädt Teile aus parts.json + PNG-Masken."""
+        loader = CameraLoader(input_dir)
+        json_data = loader.load_json()
+
+        self.logger.info(f"  → Kamera-Eingabe erkannt: {loader.px_per_mm} px/mm, "
+                         f"A4 {loader.a4_width_mm}×{loader.a4_height_mm} mm")
+
+        # Auflösung aus JSON übernehmen und alle abhängigen Komponenten neu initialisieren
+        self.config.resolution.native_px_per_mm = loader.px_per_mm
+        self.config.resolution.a4_width_mm = loader.a4_width_mm
+        self.config.resolution.a4_height_mm = loader.a4_height_mm
+        # A5-Quellbereich = gleiche Abmessungen wie A4-Ziel (Kamera sieht die Ablage)
+        self.config.resolution.a5_width_mm = loader.a4_width_mm
+        self.config.resolution.a5_height_mm = loader.a4_height_mm
+        self._init_resolution_components()
+
+        self.logger.info(f"  → solver_scale={self.resolution.solver_scale:.4f}, "
+                         f"score_weight={self.resolution.score_weight_multiplier:.1f}")
+
+        puzzle_pieces = loader.create_puzzle_pieces(self.resolution.solver_px_per_mm)
+
+        piece_ids, piece_shapes = loader.load_pieces_for_solver(
+            scale=self.resolution.solver_scale
+        )
+        _, piece_shapes_fine = loader.load_pieces_for_solver(
+            scale=self.resolution.finetune_scale
+        )
+
+        self.logger.info(f"  → {len(piece_ids)} Kamera-Teile geladen")
+        self.logger.info("  → Segmentierung...")
+        self.logger.info("  → Feature-Extraktion...")
+
+        PieceAnalyzer.analyze_all_pieces(puzzle_pieces, piece_shapes, tuning=self.tuning)
+
+        self.logger.info("\n" + "=" * 80)
+        self.logger.info("PIECE ANALYSIS RESULTS")
+        self.logger.info("=" * 80)
+
+        corner_count = sum(1 for p in puzzle_pieces if p.piece_type == "corner")
+        edge_count = sum(1 for p in puzzle_pieces if p.piece_type == "edge")
+        center_count = sum(1 for p in puzzle_pieces if p.piece_type == "center")
+
+        self.logger.info(f"\n[STATS] Classification:")
+        self.logger.info(f"    Corner pieces: {corner_count}")
+        self.logger.info(f"    Edge pieces: {edge_count}")
+        self.logger.info(f"    Center pieces: {center_count}")
+
+        debug_dir = Path(input_dir) / "debug"
+        try:
+            os.makedirs(debug_dir, exist_ok=True)
+            save_debug = True
+        except OSError:
+            save_debug = False
+
+        for piece in puzzle_pieces:
+            pid = int(piece.id)
+            self.logger.info(f"\n{piece.summary()}")
+            if save_debug and pid in piece_shapes:
+                vis = PieceAnalyzer.visualize_corners(piece_shapes[pid], piece)
+                cv2.imwrite(str(debug_dir / f"piece_{pid}_analysis.png"), vis)
 
         self.logger.info(f"\n  → {len(piece_ids)} Teile geladen und analysiert")
         self.logger.info("=" * 80 + "\n")

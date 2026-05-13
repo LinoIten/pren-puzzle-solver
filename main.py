@@ -34,7 +34,15 @@ def main():
             config.vision.regenerate_mock = True
         if _six_pieces:
             config.vision.num_cuts = 3
-        pipeline = PuzzlePipeline(config, show_ui=True)  # Enable UI
+
+        # Kamera-Eingabe hat Vorrang: input/parts.json vorhanden?
+        puzzle_dir = None
+        input_dir = project_root / "input"
+        if (input_dir / "parts.json").exists():
+            puzzle_dir = str(input_dir)
+            logger.info(f"Kamera-Eingabe erkannt: {input_dir}")
+
+        pipeline = PuzzlePipeline(config, show_ui=True, puzzle_dir=puzzle_dir)
         result = pipeline.run()
         
         if result.success:
