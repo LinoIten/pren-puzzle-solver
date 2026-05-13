@@ -33,7 +33,7 @@ CLEAR_ALGO_INPUT_FOLDER_BEFORE_SAVE = True
 # Bildquelle:
 # "camera" = neues Bild mit Pi Camera 3 aufnehmen
 # "file"   = bestehendes Bild von Datei laden
-IMAGE_SOURCE = "camera"
+IMAGE_SOURCE = "file"
 
 # Pfad zum Eingabebild, falls IMAGE_SOURCE = "file" oder falls keine Kamera gefunden wurde
 INPUT_IMAGE_PATH = "1.png"
