@@ -33,7 +33,7 @@ CLEAR_ALGO_INPUT_FOLDER_BEFORE_SAVE = True
 # Bildquelle:
 # "camera" = neues Bild mit Pi Camera 3 aufnehmen
 # "file"   = bestehendes Bild von Datei laden
-IMAGE_SOURCE = "file"
+IMAGE_SOURCE = "camera"
 
 # Pfad zum Eingabebild, falls IMAGE_SOURCE = "file" oder falls keine Kamera gefunden wurde
 INPUT_IMAGE_PATH = PROJECT_ROOT / "1.png"
@@ -130,7 +130,7 @@ COORDINATE_ORIGIN = "top_right"
 # "fixed"    = fester Threshold mit THRESHOLD_VALUE
 # "otsu"     = automatischer Threshold, meistens gute erste Wahl
 # "adaptive" = robuster bei ungleichmässiger Beleuchtung
-SEGMENTATION_THRESHOLD_MODE = "otsu"
+SEGMENTATION_THRESHOLD_MODE = "adaptive"
 
 # Nur verwendet, wenn SEGMENTATION_THRESHOLD_MODE = "fixed"
 THRESHOLD_VALUE = 150
