@@ -709,6 +709,7 @@ class PuzzlePipeline:
             pieces=puzzle_pieces,
             port=self.config.hardware.serial_port,
             baudrate=self.config.hardware.baud_rate,
+            ppx_to_mm=self.config.resolution.native_px_per_mm,
             timeout=5.0,
         )
 

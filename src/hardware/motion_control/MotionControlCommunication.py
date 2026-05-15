@@ -39,6 +39,7 @@ def send_to_robot(
     pieces: list[PuzzlePiece],
     port: str = DEFAULT_PORT,
     baudrate: int = DEFAULT_BAUDRATE,
+    ppx_to_mm: float = PIXEL_TO_MM_SCALE,
     timeout: float = DEFAULT_TIMEOUT,
 ) -> bool:
     """
@@ -55,11 +56,11 @@ def send_to_robot(
     for p in pieces:
         piece = cmd.pieces.add()
         piece.piece_id = int(p.id)
-        piece.pick_x = p.pick_pose.x / PIXEL_TO_MM_SCALE
-        piece.pick_y = p.pick_pose.y / PIXEL_TO_MM_SCALE
+        piece.pick_x = p.pick_pose.x / ppx_to_mm
+        piece.pick_y = p.pick_pose.y / ppx_to_mm
         if p.place_pose:
-            piece.place_x = p.place_pose.x / PIXEL_TO_MM_SCALE
-            piece.place_y = p.place_pose.y / PIXEL_TO_MM_SCALE
+            piece.place_x = p.place_pose.x / ppx_to_mm
+            piece.place_y = p.place_pose.y / ppx_to_mm
             piece.rotation = p.place_pose.theta
         else:
             piece.place_x = 0.0
