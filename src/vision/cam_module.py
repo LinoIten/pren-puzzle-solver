@@ -319,7 +319,7 @@ def captureImageFromCamera():
         picam2.set_controls({
             "AeEnable": False,
             "AwbEnable": False,
-            "ExposureTime": 6000,
+            "ExposureTime": 4000,
             "AnalogueGain": 1.0,
             "ColourGains": (1.5, 1.5),
         })
