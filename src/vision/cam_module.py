@@ -398,7 +398,14 @@ def getA4CornerIndexForMarker(markerId):
         return markerId
 
     if MARKER_POSITION_MODE == "outside":
-        return (markerId + 2) % 4
+        outsideCornerMap = {
+            0: 3,
+            1: 2,
+            2: 1,
+            3: 0,
+        }
+
+        return outsideCornerMap[markerId]
 
     raise ValueError('MARKER_POSITION_MODE muss "inside" oder "outside" sein.')
 
