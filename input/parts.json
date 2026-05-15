@@ -23,7 +23,7 @@
   "parts": [
     {
       "index": 1,
-      "mask_filename": "png_0.png",
+      "mask_filename": "piece_0.png",
       "centroid_mm": {
         "x": 199.345995,
         "y": 42.195832
@@ -32,7 +32,7 @@
     },
     {
       "index": 2,
-      "mask_filename": "png_1.png",
+      "mask_filename": "piece_1.png",
       "centroid_mm": {
         "x": 65.357472,
         "y": 48.697465
@@ -41,7 +41,7 @@
     },
     {
       "index": 3,
-      "mask_filename": "png_2.png",
+      "mask_filename": "piece_2.png",
       "centroid_mm": {
         "x": 221.628927,
         "y": 130.957023
@@ -50,7 +50,7 @@
     },
     {
       "index": 4,
-      "mask_filename": "png_3.png",
+      "mask_filename": "piece_3.png",
       "centroid_mm": {
         "x": 67.530501,
         "y": 138.414929
