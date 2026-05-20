@@ -560,6 +560,14 @@ def warpPxToA4Mm(xPx, yPx):
 
     return xMm, yMm
 
+def warpPxToA4Px(xPx, yPx):
+
+    warpWidthPx, warpHeightPx = getWarpSizePx()
+
+    xA4Px = (warpWidthPx - 1) - float(xPx)
+    yA4Px = float(yPx)
+
+    return xA4Px, yA4Px
 
 def buildCoordinateOriginDescription():
     if COORDINATE_ORIGIN == "bottom_left":
@@ -740,15 +748,32 @@ def sortPartsByA4YThenA4X(detectedParts):
 
 def addDerivedPartValues(detectedParts):
     for i, partInfo in enumerate(detectedParts):
-        centroidXmm, centroidYmm = warpPxToA4Mm(partInfo["centroidX"], partInfo["centroidY"])
+        centroidXpxA4, centroidYpxA4 = warpPxToA4Px(
+            partInfo["centroidX"],
+            partInfo["centroidY"]
+        )
+
+        centroidXmm = centroidXpxA4 / PX_PER_MM
+        centroidYmm = centroidYpxA4 / PX_PER_MM
+
         areaMm2 = partInfo["areaPx"] / (PX_PER_MM ** 2)
 
         partInfo["index"] = i + 1
         partInfo["partName"] = f"part_{i + 1:02d}"
+
+        # OpenCV-Warp-Pixel, Ursprung oben links
+        partInfo["centroidWarpXpx"] = float(partInfo["centroidX"])
+        partInfo["centroidWarpYpx"] = float(partInfo["centroidY"])
+
+        # A4-Pixel, Ursprung oben rechts
+        partInfo["centroidXpx"] = float(centroidXpxA4)
+        partInfo["centroidYpx"] = float(centroidYpxA4)
+
+        # A4-mm, Ursprung oben rechts
         partInfo["centroidXmm"] = float(centroidXmm)
         partInfo["centroidYmm"] = float(centroidYmm)
-        partInfo["areaMm2"] = float(areaMm2)
 
+        partInfo["areaMm2"] = float(areaMm2)
 
 # ============================================================
 # FLÄCHENVALIDIERUNG
@@ -915,8 +940,12 @@ def buildPartsJsonData(detectedParts, areaValidationData):
                 "y": round(partInfo["centroidYmm"], 6),
             },
             "centroid_px": {
-                "x": round(partInfo["centroidX"], 6),
-                "y": round(partInfo["centroidY"], 6),
+                "x": round(partInfo["centroidXpx"], 6),
+                "y": round(partInfo["centroidYpx"], 6),
+            },
+            "centroid_warp_px_debug": {
+                "x": round(partInfo["centroidWarpXpx"], 6),
+                "y": round(partInfo["centroidWarpYpx"], 6),
             },
             "area_mm2": round(partInfo["areaMm2"], 6),
             "bounding_box_px": {
