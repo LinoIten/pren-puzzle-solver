@@ -79,7 +79,7 @@ OUTPUT_H_IMAGE_TO_A4_MM_PATH = f"{RUN_NAME}_h_image_to_a4_mm.npy"
 DEBUG_SHOW_IMAGES = False
 
 # Wartezeit für jedes Debug-Fenster
-DEBUG_WAIT_MS = 5000
+DEBUG_WAIT_MS = 1000
 
 INPUT_WINDOW_NAME = "Input Image"
 DEBUG_WINDOW_NAME = "A4 Corner Debug Image"
@@ -761,10 +761,6 @@ def addDerivedPartValues(detectedParts):
         partInfo["index"] = i + 1
         partInfo["partName"] = f"part_{i + 1:02d}"
 
-        # OpenCV-Warp-Pixel, Ursprung oben links
-        partInfo["centroidWarpXpx"] = float(partInfo["centroidX"])
-        partInfo["centroidWarpYpx"] = float(partInfo["centroidY"])
-
         # A4-Pixel, Ursprung oben rechts
         partInfo["centroidXpx"] = float(centroidXpxA4)
         partInfo["centroidYpx"] = float(centroidYpxA4)
@@ -942,10 +938,6 @@ def buildPartsJsonData(detectedParts, areaValidationData):
             "centroid_px": {
                 "x": round(partInfo["centroidXpx"], 6),
                 "y": round(partInfo["centroidYpx"], 6),
-            },
-            "centroid_warp_px_debug": {
-                "x": round(partInfo["centroidWarpXpx"], 6),
-                "y": round(partInfo["centroidWarpYpx"], 6),
             },
             "area_mm2": round(partInfo["areaMm2"], 6),
             "bounding_box_px": {
