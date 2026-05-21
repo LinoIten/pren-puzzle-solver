@@ -61,9 +61,9 @@
   },
   "area_validation": {
     "expected_total_area_mm2": 23814,
-    "measured_total_area_mm2": 4756.47,
-    "area_error_mm2": -19057.53,
-    "area_error_percent": -80.026581,
+    "measured_total_area_mm2": 4762.995,
+    "area_error_mm2": -19051.005,
+    "area_error_percent": -79.999181,
     "max_allowed_error_percent": 1.0,
     "is_valid": false
   },
@@ -84,19 +84,19 @@
       "index": 1,
       "part_name": "part_01",
       "centroid_mm": {
-        "x": 244.573585,
-        "y": 65.797822
+        "x": 245.559128,
+        "y": 65.871988
       },
       "centroid_px": {
-        "x": 2445.735847,
-        "y": 657.978223
+        "x": 2455.591281,
+        "y": 658.71988
       },
-      "area_mm2": 1209.215,
+      "area_mm2": 1208.07,
       "bounding_box_px": {
-        "x": 344,
-        "y": 476,
-        "w": 360,
-        "h": 365
+        "x": 333,
+        "y": 478,
+        "w": 362,
+        "h": 362
       },
       "algo_input_mask_filename": "piece_0.png",
       "image_path": "/home/pren/projects/pren-puzzle-solver/output/parts/part_01.png",
@@ -108,19 +108,19 @@
       "index": 2,
       "part_name": "part_02",
       "centroid_mm": {
-        "x": 115.573936,
-        "y": 68.810513
+        "x": 115.517396,
+        "y": 68.900045
       },
       "centroid_px": {
-        "x": 1155.739358,
-        "y": 688.105135
+        "x": 1155.173963,
+        "y": 689.000454
       },
-      "area_mm2": 1189.095,
+      "area_mm2": 1189.545,
       "bounding_box_px": {
-        "x": 1636,
-        "y": 507,
-        "w": 356,
-        "h": 363
+        "x": 1635,
+        "y": 510,
+        "w": 359,
+        "h": 359
       },
       "algo_input_mask_filename": "piece_1.png",
       "image_path": "/home/pren/projects/pren-puzzle-solver/output/parts/part_02.png",
@@ -132,19 +132,19 @@
       "index": 3,
       "part_name": "part_03",
       "centroid_mm": {
-        "x": 98.673708,
-        "y": 132.917029
+        "x": 98.294955,
+        "y": 132.472608
       },
       "centroid_px": {
-        "x": 986.737076,
-        "y": 1329.170291
+        "x": 982.94955,
+        "y": 1324.726076
       },
-      "area_mm2": 1173.795,
+      "area_mm2": 1177.405,
       "bounding_box_px": {
-        "x": 1805,
-        "y": 1149,
-        "w": 356,
-        "h": 361
+        "x": 1807,
+        "y": 1146,
+        "w": 359,
+        "h": 359
       },
       "algo_input_mask_filename": "piece_2.png",
       "image_path": "/home/pren/projects/pren-puzzle-solver/output/parts/part_03.png",
@@ -156,19 +156,19 @@
       "index": 4,
       "part_name": "part_04",
       "centroid_mm": {
-        "x": 221.642521,
-        "y": 151.55283
+        "x": 222.315811,
+        "y": 150.884369
       },
       "centroid_px": {
-        "x": 2216.425212,
-        "y": 1515.528296
+        "x": 2223.158112,
+        "y": 1508.843695
       },
-      "area_mm2": 1184.365,
+      "area_mm2": 1187.975,
       "bounding_box_px": {
-        "x": 573,
-        "y": 1331,
-        "w": 360,
-        "h": 368
+        "x": 564,
+        "y": 1326,
+        "w": 365,
+        "h": 365
       },
       "algo_input_mask_filename": "piece_3.png",
       "image_path": "/home/pren/projects/pren-puzzle-solver/output/parts/part_04.png",

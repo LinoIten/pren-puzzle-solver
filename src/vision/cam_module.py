@@ -1,3 +1,5 @@
+#vom pi
+
 # cam_module.py
 # Kamera-/Datei-Eingang, ArUco-basierte A4-Entzerrung, Teile-Segmentierung
 # und Export der Algorithmus-Eingaben.
@@ -50,6 +52,8 @@ ROTATE_90_CLOCKWISE = False
 ROTATE_180 = False
 
 # Manuelle Kameraeinstellungen fuer Tests gegen Ueberbelichtung.
+# Ohne unterbeleuchtung, Kunstlicht, exposureTime rund 8000
+# Mit Unterbeleuchtung, Kunstlicht 6000
 CAMERA_CONTROLS = {
     "AeEnable": False,
     "AwbEnable": False,
@@ -100,17 +104,11 @@ A4_WIDTH_MM = 297.0
 A4_HEIGHT_MM = 210.0
 PX_PER_MM = 10.0
 
-# ------------------------------------------------------------
-# Marker-Ecken-Zuordnung
-# ------------------------------------------------------------
+
 # Diese Punkte sind die gemessenen Referenzpunkte im Bild.
 # Bei OFFSET = 0.0 sind diese Referenzpunkte direkt die echten A4-Ecken.
-#
-# OpenCV-ArUco-Corner-Indizes normalerweise:
-# 0 = oben links, 1 = oben rechts, 2 = unten rechts, 3 = unten links
-# bezogen auf den Marker selbst im Bild.
-#
-# Deine aktuelle funktionierende Zuordnung:
+
+
 # A4 top_right    = ID 0 / Ecke 3
 # A4 bottom_right = ID 1 / Ecke 2
 # A4 bottom_left  = ID 2 / Ecke 1
@@ -179,7 +177,7 @@ ADAPTIVE_THRESHOLD_C = 8
 
 GAUSSIAN_BLUR_KERNEL_SIZE = 7
 
-MIN_PART_AREA_MM2 = 4500.0
+MIN_PART_AREA_MM2 = 500.0
 MAX_PART_AREA_MM2 = 100000.0
 
 MORPH_OPEN_KERNEL_SIZE = 5
@@ -240,10 +238,10 @@ CORNER_TEXT_OFFSET_Y = -8
 TEXT_FONT_SCALE = 0.8
 TEXT_THICKNESS = 2
 
-# Koordinatensystem / Raster in der parts_debug-Ausgabe
+# Zeichnen des Koordinatensystems in parts_debug.png
 DEBUG_DRAW_COORDINATE_GRID = True
-DEBUG_GRID_SPACING_MM = 10.0       # 10 mm = 1 cm
-DEBUG_GRID_MAJOR_SPACING_MM = 50.0 # staerkere Linie alle 5 cm
+DEBUG_GRID_SPACING_MM = 1.0       # mm
+DEBUG_GRID_MAJOR_SPACING_MM = 10.0 # stärkere linie alle x mm
 DEBUG_GRID_ALPHA = 0.35
 DEBUG_AXIS_LENGTH_MM = 50.0
 
