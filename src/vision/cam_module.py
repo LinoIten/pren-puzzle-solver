@@ -185,7 +185,7 @@ MORPH_CLOSE_KERNEL_SIZE = 7
 FILL_CONTOUR_HOLES = True
 
 CROP_PADDING_PX = 0
-EXPECTED_PART_COUNT = 4
+EXPECTED_PART_COUNT = [4, 6]
 CUTOUT_BACKGROUND_VALUE = 255
 
 
@@ -1001,15 +1001,18 @@ def buildPartsJsonList(detectedParts, includePaths):
 
     return partsJson
 
+def isExpectedPartCount(partCount):
+    return partCount in EXPECTED_PART_COUNT
 
 def buildDebugJsonData(detectedParts, areaValidationData):
     geometryData = buildGeometryJsonData()
 
     return {
+
         "run_name": RUN_NAME,
         "part_count": len(detectedParts),
-        "expected_part_count": EXPECTED_PART_COUNT,
-        "part_count_is_valid": len(detectedParts) == EXPECTED_PART_COUNT,
+        "expected_part_counts": EXPECTED_PART_COUNT,
+        "part_count_is_valid": isExpectedPartCount(len(detectedParts)),
         **geometryData,
         "expected_total_part_area": {
             "description": "PREN puzzle area without frame",
@@ -1036,7 +1039,7 @@ def buildAlgoInputJsonData(detectedParts, areaValidationData):
     return {
         "part_count": len(detectedParts),
         "expected_part_count": EXPECTED_PART_COUNT,
-        "part_count_is_valid": len(detectedParts) == EXPECTED_PART_COUNT,
+        "part_count_is_valid": isExpectedPartCount(len(detectedParts)),
         "coordinate_system": {
             "origin": COORDINATE_ORIGIN,
             "description": buildCoordinateOriginDescription(),
