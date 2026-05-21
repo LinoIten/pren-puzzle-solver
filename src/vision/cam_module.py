@@ -67,7 +67,7 @@ CAMERA_CONTROLS = {
 # AUSGABE / DEBUG-DATEIEN
 # ============================================================
 
-OUTPUT_DIR = PROJECT_ROOT / "output"
+OUTPUT_DIR = PROJECT_ROOT / "src" / "vision" / "output"
 OUTPUT_PARTS_DIR = OUTPUT_DIR / "parts"
 OUTPUT_PART_MASKS_DIR = OUTPUT_DIR / "part_masks"
 OUTPUT_PART_CUTOUTS_DIR = OUTPUT_DIR / "part_cutouts"
