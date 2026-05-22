@@ -29,12 +29,14 @@ def try_edge_placement_on_corners(
 ) -> dict:
     """Try smart edge placement on a specific corner layout."""
 
-    # Get edge and center pieces
+    # Get edge and center pieces — exclude whichever pieces are already placed as corners.
+    # Corner-classified pieces that weren't selected for the 4 corner slots (escalation
+    # rounds can have more than 4 candidates) are treated as edge pieces here.
     corner_piece_ids = {int(p.id) for p in corner_pieces}
     edge_pieces = [
         p
         for p in puzzle_pieces
-        if p.piece_type == "edge" and int(p.id) not in corner_piece_ids
+        if p.piece_type in ("edge", "corner") and int(p.id) not in corner_piece_ids
     ]
     center_pieces = [
         p
@@ -42,15 +44,11 @@ def try_edge_placement_on_corners(
         if p.piece_type == "center" and int(p.id) not in corner_piece_ids
     ]
 
-    print(f"    Edge pieces to place: {[int(p.id) for p in edge_pieces]}")
-
     # Start with corner placements
     current_placements = corner_placements.copy()
     current_score = corner_only_score
 
-    # Place each edge piece intelligently
     for edge_piece in edge_pieces:
-        print(f"      → Placing edge piece {edge_piece.id}...")
 
         best_placement = find_best_edge_placement(
             edge_piece=edge_piece,
@@ -74,18 +72,11 @@ def try_edge_placement_on_corners(
             improvement = new_score - current_score
             current_score = new_score
 
-            # Add to visualizer
             all_guesses.append(current_placements.copy())
             all_scores.append(new_score)
-
-            print(
-                f"        ✓ Placed on {best_placement['side']} at ({best_placement['x']:.0f}, {best_placement['y']:.0f})"
-            )
-            print(f"        Score: {new_score:.1f} ({improvement:+.1f})")
+            print(f"    edge {edge_piece.id}: {best_placement['side']} score {new_score:.0f} ({improvement:+.0f})")
         else:
-            print(
-                f"        ⚠️  Could not find good placement for piece {edge_piece.id}"
-            )
+            print(f"    edge {edge_piece.id}: no placement found")
 
     # Place center pieces (simple for now - just random)
     for center_piece in center_pieces:
@@ -150,7 +141,7 @@ def find_best_edge_placement(
     ]
 
     best_placement = None
-    best_score = current_score
+    best_score = -float("inf")  # Always place the piece at its best position
 
     for rotation, side_name in rotation_side_pairs:
         rotated_mask = rotate_and_crop(piece_shapes[piece_id], rotation)
@@ -174,8 +165,6 @@ def find_best_edge_placement(
             "axis_type": axis_type,
         }
 
-        print(f"        Trying θ={rotation}° → {side_name} side (sliding {slide_positions} positions)...")
-
         optimized = slide_along_axis(
             piece_id=piece_id,
             piece_shapes=piece_shapes,
@@ -191,12 +180,9 @@ def find_best_edge_placement(
             num_positions=slide_positions,
         )
 
-        print(f"          → score={optimized['score']:.1f} (best so far: {best_score:.1f})")
-
         if optimized["score"] > best_score:
             best_score = optimized["score"]
             best_placement = optimized["placement"]
-            print(f"          ✓ New best: θ={rotation}° on {side_name}")
 
     return best_placement
 

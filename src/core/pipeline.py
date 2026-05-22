@@ -418,6 +418,7 @@ class PuzzlePipeline:
             initial_corner_count=self.tuning.initial_corner_count,
             max_corners_to_refine=self.tuning.max_corners_to_refine,
             max_iterations=self.tuning.max_iterations,
+            px_per_mm=self.resolution.solver_px_per_mm,
         )
         if not solution.success:
             self.logger.warning("  ! Keine gute Loesung gefunden")

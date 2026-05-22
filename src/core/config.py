@@ -48,13 +48,14 @@ class ResolutionConfig:
 
     native_px_per_mm: float = 2.0  # Aufloesung der Quellbilder
     solver_px_per_mm: float = 2.0  # Wird zur Laufzeit auf native_px_per_mm gesetzt
-    finetune_max_px_per_mm: float = 10.0  # Obergrenze fuer Fine-Tuning
+    finetune_max_px_per_mm: float = 10.0  # Obergrenze fuer Fine-Tuning (absolute px/mm)
+    finetune_max_scale: float = 0.6  # Obergrenze fuer Fine-Tuning (relativ zu native)
 
     # Physikalische Abmessungen in mm
     # a4 = Zielbereich (physisches A5-Blatt: 148x210)
     # a5 = Quellbereich (physisches A4-Blatt, Kamera: 297x210 Querformat)
-    a4_width_mm: int = 124  # Ziel (A5-Blatt, Querformat: Breite)
-    a4_height_mm: int = 181  # Ziel (A5-Blatt: Höhe)
+    a4_width_mm: int = 134  # Ziel (A5-Blatt, Querformat: Breite)
+    a4_height_mm: int = 191  # Ziel (A5-Blatt: Höhe)
     a5_width_mm: int = 297  # Quelle (A4-Blatt, Querformat: Breite)
     a5_height_mm: int = 210  # Quelle (A4-Blatt: Höhe)
 
@@ -93,8 +94,9 @@ class ResolutionConfig:
 
     @property
     def finetune_px_per_mm(self) -> float:
-        """Tatsaechliche Fine-Tuning-Aufloesung: native oder gekappt."""
-        return min(self.native_px_per_mm, self.finetune_max_px_per_mm)
+        """Tatsaechliche Fine-Tuning-Aufloesung: native, gekappt durch px/mm-Limit und Scale-Limit."""
+        scale_cap = self.native_px_per_mm * self.finetune_max_scale
+        return min(self.native_px_per_mm, self.finetune_max_px_per_mm, scale_cap)
 
     @property
     def finetune_scale(self) -> float:
@@ -166,6 +168,9 @@ class SolverTuning:
     # --- Edge Placement (edge_placement.py) ---
     slide_positions: int = 20  # Gitterpositionen pro Achse
     center_piece_margin: int = 25  # mm
+    gap_dilation_mm: float = (
+        3.0  # Randverbreiterung (mm) der Teile beim Solver, um Luecken zu kompensieren
+    )
 
     # --- Fine-Tuning (fine_tuner.py) ---
     finetune_xy_range: int = 4  # Pixel bei finetune_scale=1.0 (±2mm)

@@ -84,6 +84,7 @@ class IterativeSolver:
         max_corners_to_refine: int = 20,
         refinement_patience: int = 5,
         max_iterations: int = 600,
+        px_per_mm: float = 2.0,
     ) -> IterativeSolution:
         """
         1. Evaluate many corners upfront (e.g., 100)
@@ -93,6 +94,18 @@ class IterativeSolver:
         """
 
         height, width = target.shape
+
+        # Inflate piece masks by gap_dilation_mm so the scorer penalises placements
+        # that are spatially wrong even when physical gaps give extra wiggle room.
+        dilation_px = int(round((self.tuning.gap_dilation_mm if self.tuning else 0) * px_per_mm))
+        if dilation_px > 0:
+            import cv2
+            kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * dilation_px + 1, 2 * dilation_px + 1))
+            piece_shapes = {
+                pid: cv2.dilate(mask.astype(np.uint8), kernel).astype(mask.dtype)
+                for pid, mask in piece_shapes.items()
+            }
+            print(f"  Gap dilation: {dilation_px}px ({self.tuning.gap_dilation_mm}mm)")
         self.corner_fitter = CornerFitter(
             width=width, height=height, tuning=self.tuning
         )
@@ -107,77 +120,112 @@ class IterativeSolver:
         ]
 
         if not corner_candidates:
-            print("  ⚠️  No corner pieces found!")
+            print("  ⚠️ No corner pieces found!")
             return self._empty_solution()
 
-        print(f"\n  Found {len(corner_candidates)} corner pieces:")
-        for piece in corner_candidates:
-            print(f"    Piece {piece.id}: {len(piece.corners)} corners")
+        # Escalation: try with corner-only pieces first, then expand to edge/center pieces
+        # that have corner features if no solution is found.
+        best_solution = self._empty_solution()
+        escalation_round = 0
+        newly_added = []  # pieces added in the most recent escalation step
 
-        # Generate combinations:
-        # Step 1: Permutations of pieces (which piece in which corner)
-        piece_permutations = list(itertools.permutations(corner_candidates))
+        while True:
+            escalation_round += 1
+            print(f"\n--- ESCALATION ROUND {escalation_round}: {len(corner_candidates)} candidates {[int(p.id) for p in corner_candidates]} ---")
 
-        print(
-            f"\n  Piece permutations: {len(piece_permutations)} (which piece → which corner)"
-        )
-        print(f"  Example: {[int(p.id) for p in piece_permutations[0]]}")
-        print(f"           {[int(p.id) for p in piece_permutations[1]]}")
+            # In escalation rounds, only generate combinations that include at least one
+            # of the newly added pieces — those are the only combinations not tried before.
+            all_corner_combinations = self._generate_combinations(
+                corner_candidates, required_pieces=newly_added if newly_added else None
+            )
 
-        # Step 2: For each permutation, generate corner rotation combinations
+            if not all_corner_combinations:
+                print("  ⚠️ Not enough candidates with corners for 4 corner slots — stopping")
+                break
+
+            # In escalation rounds, evaluate all filtered combinations in Phase 1
+            # (already a reduced set), then refine more layouts since we haven't seen any of them.
+            phase1_count = len(all_corner_combinations) if newly_added else initial_corner_count
+            phase2_count = len(all_corner_combinations) if newly_added else max_corners_to_refine
+
+            solution = self._solve_with_mode_switching(
+                corner_candidates,
+                all_corner_combinations,
+                piece_shapes,
+                target,
+                puzzle_pieces,
+                score_threshold,
+                phase1_count,
+                phase2_count,
+                refinement_patience,
+                max_iterations,
+            )
+
+            if solution.score > best_solution.score:
+                best_solution = solution
+
+            if solution.success:
+                return best_solution
+
+            # Escalate 1: add edge pieces that have corner detections
+            edges_with_corners = [
+                p for p in puzzle_pieces
+                if p.piece_type == "edge" and p.corners and p not in corner_candidates
+            ]
+            if edges_with_corners:
+                newly_added = edges_with_corners
+                corner_candidates = corner_candidates + edges_with_corners
+                print(f"  Escalating: adding {len(edges_with_corners)} edge piece(s) with corners: {[int(p.id) for p in edges_with_corners]}")
+                continue
+
+            # Escalate 2: add center pieces that have corner detections
+            centers_with_corners = [
+                p for p in puzzle_pieces
+                if p.piece_type == "center" and p.corners and p not in corner_candidates
+            ]
+            if centers_with_corners:
+                newly_added = centers_with_corners
+                corner_candidates = corner_candidates + centers_with_corners
+                print(f"  Escalating: adding {len(centers_with_corners)} center piece(s) with corners: {[int(p.id) for p in centers_with_corners]}")
+                continue
+
+            print(f"  Escalation exhausted after {escalation_round} round(s). Best score: {best_solution.score:.1f}")
+            break
+
+        return best_solution
+
+    def _generate_combinations(self, corner_candidates, required_pieces=None):
+        """Generate sorted corner combinations (permutations × rotations) for given candidates.
+
+        If required_pieces is set, only combinations that include at least one of those
+        pieces are returned — used in escalation rounds to skip already-explored territory.
+        """
+        candidates_with_corners = [p for p in corner_candidates if p.corners]
+        if len(candidates_with_corners) < 4:
+            print(f"  ⚠️ Only {len(candidates_with_corners)} candidates have corner data (need 4)")
+            return []
+
+        piece_permutations = list(itertools.permutations(candidates_with_corners, 4))
+
+        required_ids = {int(p.id) for p in required_pieces} if required_pieces else None
+
         all_corner_combinations = []
-
         for perm in piece_permutations:
-            # For this permutation, get all rotation combinations
-            piece_corner_options = [[i for i in range(len(p.corners))] for p in perm]
-            rotation_combos = list(itertools.product(*piece_corner_options))
-
-            # Store (piece_permutation, rotation_combo)
-            for rotation_combo in rotation_combos:
+            if required_ids and not any(int(p.id) in required_ids for p in perm):
+                continue
+            piece_corner_options = [list(range(len(p.corners))) for p in perm]
+            for rotation_combo in itertools.product(*piece_corner_options):
                 all_corner_combinations.append((perm, rotation_combo))
 
-        print(f"\n  Total combinations: {len(all_corner_combinations)}")
-        print(f"    = {len(piece_permutations)} permutations × avg rotations per perm")
-
-        # Sort by quality (sum of corner qualities for each combo)
         def combo_quality(combo):
             perm, rotation_indices = combo
-            total_quality = 0
-            for piece, corner_idx in zip(perm, rotation_indices):
-                total_quality += piece.corners[corner_idx].quality
-            return total_quality
+            return sum(piece.corners[corner_idx].quality
+                       for piece, corner_idx in zip(perm, rotation_indices))
 
         all_corner_combinations.sort(key=combo_quality, reverse=True)
-
-        print(f"  Total corner combinations: {len(all_corner_combinations)}")
-
-        # Show piece distribution for verification
-        all_edge_pieces = [p for p in puzzle_pieces if p.piece_type == "edge"]
-        all_center_pieces = [p for p in puzzle_pieces if p.piece_type == "center"]
-
-        print(f"\n  📋 Piece Distribution:")
-        print(
-            f"     Corners (→ placed in 4 corners): {[int(p.id) for p in corner_candidates]}"
-        )
-        print(
-            f"     Edges (→ placed along sides):   {[int(p.id) for p in all_edge_pieces]}"
-        )
-        print(
-            f"     Centers (→ placed in middle):   {[int(p.id) for p in all_center_pieces]}"
-        )
-
-        return self._solve_with_mode_switching(
-            corner_candidates,
-            all_corner_combinations,
-            piece_shapes,
-            target,
-            puzzle_pieces,
-            score_threshold,
-            initial_corner_count,
-            max_corners_to_refine,
-            refinement_patience,
-            max_iterations,
-        )
+        filter_note = f" (filtered to include pieces {list(required_ids)})" if required_ids else ""
+        print(f"  {len(candidates_with_corners)} pieces with corners → {len(all_corner_combinations)} combinations{filter_note}")
+        return all_corner_combinations
 
     def _solve_with_mode_switching(
         self,
@@ -197,7 +245,7 @@ class IterativeSolver:
         # ========================================================================
         # PHASE 1: EVALUATE MANY CORNERS FIRST (no edge refinement yet!)
         # ========================================================================
-        print(f"\n  === PHASE 1: Evaluate corner layouts (no edges yet) ===")
+        print(f"  Phase 1: evaluating {min(initial_corner_count, len(all_corner_combinations))} corner layouts...")
 
         corner_evaluations = evaluate_corner_layouts(
             all_combinations=all_corner_combinations,
@@ -214,19 +262,10 @@ class IterativeSolver:
             initial_corner_count, len(all_corner_combinations)
         )
 
-        best_corner_score = corner_evaluations[0][4]  # score is at index 4
+        best_corner_score = corner_evaluations[0][4]
         worst_in_top10 = corner_evaluations[min(9, len(corner_evaluations) - 1)][4]
-        print(f"\n  Score range: {worst_in_top10:.1f} → {best_corner_score:.1f}")
-
-        # ========================================================================
-        # PHASE 2: ITERATE THROUGH CORNER LAYOUTS WITH SMART EDGE PLACEMENT
-        # ========================================================================
-        print(
-            f"\n  === PHASE 2: Iterate through corner layouts with edge placement ==="
-        )
-        print(
-            f"  Will try up to {max_corners_to_refine} corner layouts until score >= {score_threshold}"
-        )
+        print(f"  Corner scores: {worst_in_top10:.0f} → {best_corner_score:.0f}")
+        print(f"  Phase 2: refining up to {min(max_corners_to_refine, len(corner_evaluations))} layouts (threshold {score_threshold})...")
 
         best_overall_score = -float("inf")
         best_overall_solution = None
@@ -244,11 +283,7 @@ class IterativeSolver:
                 corner_only_score,
             ) = corner_evaluations[layout_idx]
             layouts_tried += 1
-
-            print(
-                f"\n  → Layout {layout_idx + 1}/{corners_to_try}: Pieces {[int(p.id) for p in current_piece_perm]}"
-            )
-            print(f"    Corner-only score: {corner_only_score:.1f}")
+            print(f"  Layout {layout_idx + 1}/{corners_to_try}: pieces {[int(p.id) for p in current_piece_perm]}, corner score {corner_only_score:.0f}")
 
             # Try edge placement on this corner layout
             edge_kwargs = {}
@@ -275,22 +310,15 @@ class IterativeSolver:
             final_score = solution_with_edges["final_score"]
             final_placements = solution_with_edges["final_placements"]
 
-            print(
-                f"    Final score with edges: {final_score:.1f} ({final_score - corner_only_score:+.1f})"
-            )
-
-            # Track best solution
             if final_score > best_overall_score:
                 best_overall_score = final_score
                 best_overall_solution = final_placements
-                print(f"    ✓ NEW BEST SOLUTION! Score: {final_score:.1f}")
+                print(f"    → score {final_score:.0f} ({final_score - corner_only_score:+.0f}) *** NEW BEST ***")
+            else:
+                print(f"    → score {final_score:.0f} ({final_score - corner_only_score:+.0f})")
 
-            # Check if we've reached the threshold
             if final_score >= score_threshold:
-                print(
-                    f"\n🎯 THRESHOLD REACHED! Score {final_score:.1f} >= {score_threshold}"
-                )
-                print(f"   Used layout {layout_idx + 1}/{len(corner_evaluations)}")
+                print(f"  THRESHOLD REACHED: {final_score:.0f} >= {score_threshold} (layout {layout_idx + 1})")
 
                 # Update piece poses and return success immediately
                 self._update_piece_poses(puzzle_pieces, final_placements)
@@ -305,11 +333,7 @@ class IterativeSolver:
                     all_guesses=self.all_guesses,
                 )
 
-        print(f"\n🏆 Final Results:")
-        print(f"   Best score: {best_overall_score:.1f}")
-        print(f"   Layouts tried: {layouts_tried}/{corners_to_try}")
-        print(f"   Success: {best_overall_score >= score_threshold}")
-        print(f"   Total guesses: {len(self.all_guesses)}")
+        print(f"  Best: {best_overall_score:.0f} after {layouts_tried} layouts | guesses: {len(self.all_guesses)} | success: {best_overall_score >= score_threshold}")
 
         # Update piece poses with best solution
         self._update_piece_poses(puzzle_pieces, best_overall_solution)
