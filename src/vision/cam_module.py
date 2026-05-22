@@ -1,4 +1,8 @@
 # cam_module.py
+
+# tbd Logik einbauen falls keine passende Teileanzahl bzw Fläche erkannt wurde.
+# tbd Kameraeinstellungen von umgebung ableiten, benötigt in jedem fall zwei aufnahmen
+
 # Kamera-/Datei-Eingang, ArUco-basierte A4-Entzerrung, Teile-Segmentierung
 # und Export der Algorithmus-Eingaben.
 
