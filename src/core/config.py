@@ -53,8 +53,8 @@ class ResolutionConfig:
     # Physikalische Abmessungen in mm
     # a4 = Zielbereich (physisches A5-Blatt: 148x210)
     # a5 = Quellbereich (physisches A4-Blatt, Kamera: 297x210 Querformat)
-    a4_width_mm: int = 129  # Ziel (A5-Blatt, Querformat: Breite)
-    a4_height_mm: int = 191  # Ziel (A5-Blatt: Höhe)
+    a4_width_mm: int = 124  # Ziel (A5-Blatt, Querformat: Breite)
+    a4_height_mm: int = 181  # Ziel (A5-Blatt: Höhe)
     a5_width_mm: int = 297  # Quelle (A4-Blatt, Querformat: Breite)
     a5_height_mm: int = 210  # Quelle (A4-Blatt: Höhe)
 
@@ -87,7 +87,7 @@ class ResolutionConfig:
     @property
     def score_weight_multiplier(self) -> float:
         # Nur noch als Fallback — Pipeline berechnet Gewicht dynamisch aus Zielflaeche
-        return self.solver_px_per_mm ** 2
+        return self.solver_px_per_mm**2
 
     # --- Fine-Tuning-Aufloesung ---
 
@@ -204,7 +204,7 @@ class HardwareConfig:
 
     serial_port: str = "/dev/serial0"
     baud_rate: int = 115200
-    enabled: bool = False  # Lokal deaktiviert; True auf dem Roboter
+    enabled: bool = True  # Lokal deaktiviert; True auf dem Roboter
 
 
 @dataclass
