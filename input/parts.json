@@ -23,9 +23,9 @@
   "expected_total_part_area_mm2": 23814,
   "area_validation": {
     "expected_total_area_mm2": 23814,
-    "measured_total_area_mm2": 7257.09,
-    "area_error_mm2": -16556.91,
-    "area_error_percent": -69.525951,
+    "measured_total_area_mm2": 20655.085,
+    "area_error_mm2": -3158.915,
+    "area_error_percent": -13.264949,
     "max_allowed_error_percent": 1.0,
     "is_valid": false
   },
@@ -34,19 +34,19 @@
       "index": 1,
       "part_name": "part_01",
       "centroid_mm": {
-        "x": 268.993205,
-        "y": 46.722962
+        "x": 58.00881,
+        "y": 56.626147
       },
       "centroid_px": {
-        "x": 2689.932046,
-        "y": 467.229623
+        "x": 580.088104,
+        "y": 566.261473
       },
-      "area_mm2": 1233.97,
+      "area_mm2": 2704.375,
       "bounding_box_px": {
-        "x": 96,
-        "y": 288,
-        "w": 366,
-        "h": 361
+        "x": 2044,
+        "y": 252,
+        "w": 601,
+        "h": 603
       },
       "algo_input_mask_filename": "piece_0.png"
     },
@@ -54,19 +54,19 @@
       "index": 2,
       "part_name": "part_02",
       "centroid_mm": {
-        "x": 26.950842,
-        "y": 50.144889
+        "x": 248.682718,
+        "y": 60.997608
       },
       "centroid_px": {
-        "x": 269.508423,
-        "y": 501.448888
+        "x": 2486.827181,
+        "y": 609.97608
       },
-      "area_mm2": 1247.235,
+      "area_mm2": 3594.97,
       "bounding_box_px": {
-        "x": 2518,
-        "y": 321,
-        "w": 362,
-        "h": 360
+        "x": 195,
+        "y": 216,
+        "w": 613,
+        "h": 738
       },
       "algo_input_mask_filename": "piece_1.png"
     },
@@ -74,19 +74,19 @@
       "index": 3,
       "part_name": "part_03",
       "centroid_mm": {
-        "x": 148.923918,
-        "y": 113.798995
+        "x": 159.117177,
+        "y": 66.825689
       },
       "centroid_px": {
-        "x": 1489.239181,
-        "y": 1137.989949
+        "x": 1591.171769,
+        "y": 668.256887
       },
-      "area_mm2": 1166.07,
+      "area_mm2": 3605.175,
       "bounding_box_px": {
-        "x": 1309,
-        "y": 967,
-        "w": 343,
-        "h": 344
+        "x": 995,
+        "y": 240,
+        "w": 902,
+        "h": 702
       },
       "algo_input_mask_filename": "piece_2.png"
     },
@@ -94,19 +94,19 @@
       "index": 4,
       "part_name": "part_04",
       "centroid_mm": {
-        "x": 149.957499,
-        "y": 159.612507
+        "x": 54.955329,
+        "y": 144.159372
       },
       "centroid_px": {
-        "x": 1499.57499,
-        "y": 1596.12507
+        "x": 549.553293,
+        "y": 1441.593723
       },
-      "area_mm2": 1167.215,
+      "area_mm2": 4726.665,
       "bounding_box_px": {
-        "x": 1297,
-        "y": 1424,
-        "w": 345,
-        "h": 345
+        "x": 2017,
+        "y": 920,
+        "w": 738,
+        "h": 965
       },
       "algo_input_mask_filename": "piece_3.png"
     },
@@ -114,19 +114,19 @@
       "index": 5,
       "part_name": "part_05",
       "centroid_mm": {
-        "x": 22.757265,
-        "y": 160.571329
+        "x": 231.863788,
+        "y": 151.301925
       },
       "centroid_px": {
-        "x": 227.57265,
-        "y": 1605.713293
+        "x": 2318.637877,
+        "y": 1513.019249
       },
-      "area_mm2": 1236.675,
+      "area_mm2": 2771.625,
       "bounding_box_px": {
-        "x": 2563,
-        "y": 1430,
-        "w": 358,
-        "h": 351
+        "x": 404,
+        "y": 1169,
+        "w": 627,
+        "h": 623
       },
       "algo_input_mask_filename": "piece_4.png"
     },
@@ -134,19 +134,19 @@
       "index": 6,
       "part_name": "part_06",
       "centroid_mm": {
-        "x": 270.035125,
-        "y": 161.764931
+        "x": 144.943798,
+        "y": 155.26036
       },
       "centroid_px": {
-        "x": 2700.35125,
-        "y": 1617.649308
+        "x": 1449.437977,
+        "y": 1552.6036
       },
-      "area_mm2": 1205.925,
+      "area_mm2": 3252.275,
       "bounding_box_px": {
-        "x": 93,
-        "y": 1444,
-        "w": 352,
-        "h": 348
+        "x": 1203,
+        "y": 1222,
+        "w": 682,
+        "h": 608
       },
       "algo_input_mask_filename": "piece_5.png"
     }
