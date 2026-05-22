@@ -119,16 +119,18 @@ class PuzzlePipeline:
 
             # Phase 2: Solving
             self.logger.info("Phase 2: Puzzle loesen")
+            _solve_start = time()
             solution = self._solve_puzzle(
                 pieces, piece_shapes, piece_shapes_fine, corner_info, puzzle_pieces
             )
+            _solve_elapsed = time() - _solve_start
 
             # Phase 3: Validation
             self.logger.info("Phase 3: Validierung")
             is_valid = self._validate_solution(solution)
 
             # Print hardware payload before UI blocks
-            self._print_hardware_payload(solution)
+            self._print_hardware_payload(solution, solve_time=_solve_elapsed)
 
             # Launch UI even if validation failed (for debugging)
             if self.show_ui and solution:
@@ -753,14 +755,17 @@ class PuzzlePipeline:
 
         return True
 
-    def _print_hardware_payload(self, solution):
+    def _print_hardware_payload(self, solution, solve_time: float = None):
         """Print the raw values that would be sent to the robot."""
         puzzle_pieces = (solution or {}).get("puzzle_pieces", [])
         if not puzzle_pieces:
             return
         px_per_mm = self.resolution.solver_px_per_mm
         print("\n" + "=" * 60)
-        print("HARDWARE PAYLOAD (raw values as sent to robot)")
+        if solve_time is not None:
+            print(f"HARDWARE PAYLOAD  (solved in {solve_time:.1f}s)")
+        else:
+            print("HARDWARE PAYLOAD (raw values as sent to robot)")
         print("=" * 60)
         print(f"{'Piece':<8} {'pick_x_mm':>12} {'pick_y_mm':>12} {'place_x_mm':>12} {'place_y_mm':>12} {'rotation_deg':>14}")
         print("-" * 60)
