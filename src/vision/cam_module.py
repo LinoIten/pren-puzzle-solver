@@ -1,5 +1,3 @@
-#vom pi
-
 # cam_module.py
 # Kamera-/Datei-Eingang, ArUco-basierte A4-Entzerrung, Teile-Segmentierung
 # und Export der Algorithmus-Eingaben.
@@ -22,17 +20,21 @@ except (ImportError, ModuleNotFoundError):
 # PROJEKT / DATEIEN
 # ============================================================
 
+# Projektwurzel. Von src/vision/cam_module.py zwei Ebenen nach oben.
 PROJECT_ROOT = Path(__file__).resolve().parents[2]  # src/vision/cam_module.py -> project root
 
-# Zielordner fuer die Daten, die an den Puzzle-Algorithmus gehen.
+# Zielordner für die Daten, die an den Puzzle-Algorithmus gehen.
 # In diesen Ordner werden parts.json und die Teilmasken geschrieben.
 DESTINATION_TO_ALGO_INPUT_FOLDER = PROJECT_ROOT / "input"
 
 # Eingabebild, falls IMAGE_SOURCE = "file" oder keine Pi Camera vorhanden ist.
 INPUT_IMAGE_PATH = PROJECT_ROOT / "1.png"
 
+# Name der JSON-Datei, welche der Solver später einliest.
 ALGO_INPUT_JSON_FILENAME = "parts.json"
+# Präfix für die Teilmasken im Algorithmus-Input. Beispiel: piece_0.png.
 ALGO_INPUT_MASK_PREFIX = "piece_"
+# True = Input-Ordner vor jedem Lauf leeren, damit keine alten Masken übrig bleiben.
 CLEAR_ALGO_INPUT_FOLDER_BEFORE_SAVE = True
 
 
@@ -44,21 +46,31 @@ CLEAR_ALGO_INPUT_FOLDER_BEFORE_SAVE = True
 # "file"   = bestehendes Bild von Datei laden
 IMAGE_SOURCE = "camera"
 
+# Aufnahmebreite der Pi Camera. Grösser = mehr Details, aber langsamere Verarbeitung.
 IMAGE_WIDTH = 4608
+# Aufnahmehöhe der Pi Camera. Muss zur gewünschten Kameraauflösung passen.
 IMAGE_HEIGHT = 2592
+# Wartezeit nach Kamerastart. Grösser = stabilere Belichtung/Weissabgleich, aber langsamer.
 STARTUP_WAIT_SECONDS = 3.0
 
+# Bild um 90 Grad im Uhrzeigersinn drehen, falls die Kamera mechanisch verdreht ist.
 ROTATE_90_CLOCKWISE = False
+# Bild um 180 Grad drehen. Nie gleichzeitig mit ROTATE_90_CLOCKWISE aktivieren.
 ROTATE_180 = False
 
-# Manuelle Kameraeinstellungen fuer Tests gegen Ueberbelichtung.
-# Ohne unterbeleuchtung, Kunstlicht, exposureTime rund 8000
+# Manuelle Kameraeinstellungen für Tests gegen Überbelichtung.
+# Ohne Unterbeleuchtung, Kunstlicht, exposureTime rund 8000
 # Mit Unterbeleuchtung, Kunstlicht 6000
 CAMERA_CONTROLS = {
+    # Automatische Belichtung. False = manueller ExposureTime-Wert wird verwendet.
     "AeEnable": False,
+    # Automatischer Weissabgleich. False = ColourGains unten werden verwendet.
     "AwbEnable": False,
+    # Belichtungszeit in Mikrosekunden. Höher = heller, zu hoch = A4 kann ausbrennen.
     "ExposureTime": 6000,  # Mikrosekunden
+    # Analoge Verstärkung. Höher = heller, aber mehr Bildrauschen.
     "AnalogueGain": 1.0,
+    # Rot-/Blau-Verstärkung für Weissabgleich. Höherer Wert = jeweiliger Farbkanal stärker.
     "ColourGains": (1.5, 1.5),
 }
 
@@ -67,28 +79,47 @@ CAMERA_CONTROLS = {
 # AUSGABE / DEBUG-DATEIEN
 # ============================================================
 
+# Hauptordner für Debug-Ausgaben der Vision-Pipeline.
 OUTPUT_DIR = PROJECT_ROOT / "src" / "vision" / "output"
+# Speichert ausgeschnittene Teile als Debug-Bilder.
 OUTPUT_PARTS_DIR = OUTPUT_DIR / "parts"
+# Speichert die einzelnen Teilmasken für die Kontrolle.
 OUTPUT_PART_MASKS_DIR = OUTPUT_DIR / "part_masks"
+# Speichert Teil-Cutouts: Teil sichtbar, Hintergrund weiss.
 OUTPUT_PART_CUTOUTS_DIR = OUTPUT_DIR / "part_cutouts"
 
-RUN_NAME = "step_09"
+# Namenspräfix für alle Debug-Dateien dieses Laufs.
+RUN_NAME = "debug_"
 
+# Dateiname des gespeicherten Rohbildes. Beispiel: step_09_input.png.
 OUTPUT_IMAGE_FILENAME = f"{RUN_NAME}_input.png"
+# Debug-Bild mit erkannten Markern, Referenzpunkten und berechneten A4-Ecken.
 OUTPUT_DEBUG_FILENAME = f"{RUN_NAME}_a4_corners_debug.png"
+# Entzerrtes A4-Bild. Dieses Bild ist die Basis für die Teile-Erkennung.
 OUTPUT_WARP_FILENAME = f"{RUN_NAME}_warp_a4.png"
+# Binärmaske aller erkannten Teile. Weiss = Teil, schwarz = Hintergrund.
 OUTPUT_MASK_FILENAME = f"{RUN_NAME}_parts_mask.png"
+# Debug-Bild mit Konturen, Bounding Boxes, Schwerpunkten und Raster.
 OUTPUT_PARTS_DEBUG_FILENAME = f"{RUN_NAME}_parts_debug.png"
+# Debug-JSON mit Zusatzinfos, Pfaden und Einstellungen.
 OUTPUT_JSON_FILENAME = f"{RUN_NAME}_parts.json"
+# Speichert die Homographie-Matrix Bild -> entzerrtes A4 als NumPy-Datei.
 OUTPUT_H_IMAGE_TO_WARP_PATH = f"{RUN_NAME}_h_image_to_warp.npy"
 
+# True = Debug-Fenster anzeigen. Auf dem Raspi/headless normalerweise False lassen.
 DEBUG_SHOW_IMAGES = False
+# Anzeigedauer der Debug-Fenster in Millisekunden.
 DEBUG_WAIT_MS = 1000
 
+# Fenstername für das Rohbild, falls DEBUG_SHOW_IMAGES = True.
 INPUT_WINDOW_NAME = "Input Image"
+# Fenstername für das A4-/ArUco-Debug-Bild.
 DEBUG_WINDOW_NAME = "A4 Corner Debug Image"
+# Fenstername für das entzerrte A4-Bild.
 WARP_WINDOW_NAME = "Warped A4 Image"
+# Fenstername für die Teile-Maske.
 MASK_WINDOW_NAME = "Parts Mask"
+# Fenstername für das finale Teile-Debug-Bild.
 PARTS_DEBUG_WINDOW_NAME = "Parts Debug"
 
 
@@ -96,12 +127,17 @@ PARTS_DEBUG_WINDOW_NAME = "Parts Debug"
 # ARUCO / A4-GEOMETRIE
 # ============================================================
 
+# ArUco-Wörterbuch. Muss zu den gedruckten Markern passen.
 ARUCO_DICT = cv2.aruco.DICT_4X4_50
+# Diese Marker-IDs müssen erkannt werden, sonst kann die A4-Fläche nicht berechnet werden.
 REQUIRED_IDS = [0, 1, 2, 3]
 
 # A4 im Querformat
+# Breite der A4-Fläche im Querformat in mm.
 A4_WIDTH_MM = 297.0
+# Höhe der A4-Fläche im Querformat in mm.
 A4_HEIGHT_MM = 210.0
+# Skalierung im entzerrten Bild. Grösser = mehr Pixel pro mm, genauer aber langsamer.
 PX_PER_MM = 10.0
 
 
@@ -114,9 +150,13 @@ PX_PER_MM = 10.0
 # A4 bottom_left  = ID 2 / Ecke 1
 # A4 top_left     = ID 3 / Ecke 0
 REFERENCE_CORNER_FROM_MARKER = {
+    # Echte A4-Ecke oben links wird aus Marker ID 3, Marker-Ecke 0 gelesen.
     "top_left": {"marker_id": 3, "corner_index": 0},
+    # Echte A4-Ecke oben rechts wird aus Marker ID 0, Marker-Ecke 3 gelesen.
     "top_right": {"marker_id": 0, "corner_index": 3},
+    # Echte A4-Ecke unten rechts wird aus Marker ID 1, Marker-Ecke 2 gelesen.
     "bottom_right": {"marker_id": 1, "corner_index": 2},
+    # Echte A4-Ecke unten links wird aus Marker ID 2, Marker-Ecke 1 gelesen.
     "bottom_left": {"marker_id": 2, "corner_index": 1},
 }
 
@@ -124,7 +164,7 @@ REFERENCE_CORNER_FROM_MARKER = {
 # A4-Offset / Rahmen-Offset
 # ------------------------------------------------------------
 # Diese Werte beschreiben, wie weit die gemessenen Referenzpunkte ausserhalb
-# der echten A4-Flaeche liegen.
+# der echten A4-Fläche liegen.
 #
 # Beispiel:
 # Wenn ein Rahmen rundherum 20 mm breit ist und die ArUco-Referenzpunkte
@@ -136,33 +176,43 @@ REFERENCE_CORNER_FROM_MARKER = {
 #
 # Wenn aktuell die ArUco-Ecken direkt den A4-Ecken entsprechen:
 # alle Werte auf 0.0 lassen.
+# Abstand links zwischen Referenz-/Rahmenfläche und echter A4-Fläche. Grösser = A4 startet weiter rechts.
 FRAME_OFFSET_LEFT_MM = 0.0
+# Abstand rechts zwischen echter A4-Fläche und Referenz-/Rahmenfläche. Grösser = A4 endet weiter links.
 FRAME_OFFSET_RIGHT_MM = 0.0
+# Abstand oben zwischen Referenz-/Rahmenfläche und echter A4-Fläche. Grösser = A4 startet weiter unten.
 FRAME_OFFSET_TOP_MM = 0.0
+# Abstand unten zwischen echter A4-Fläche und Referenz-/Rahmenfläche. Grösser = A4 endet weiter oben.
 FRAME_OFFSET_BOTTOM_MM = 0.0
 
 # Optionaler Feintrimm pro echter A4-Ecke.
-# Koordinaten in der Referenz-/Rahmenflaeche:
+# Koordinaten in der Referenz-/Rahmenfläche:
 # +x = nach rechts, +y = nach unten.
 #
 # Normalerweise alles 0.0 lassen.
 # Nur verwenden, wenn einzelne Marker mechanisch anders sitzen.
 A4_CORNER_EXTRA_OFFSETS_MM = {
+    # Feintrimm oben links. x höher = nach rechts, y höher = nach unten.
     "top_left": {"x": 0.0, "y": 0.0},
+    # Feintrimm oben rechts. x höher = nach rechts, y höher = nach unten.
     "top_right": {"x": 0.0, "y": 0.0},
+    # Feintrimm unten rechts. x höher = nach rechts, y höher = nach unten.
     "bottom_right": {"x": 0.0, "y": 0.0},
+    # Feintrimm unten links. x höher = nach rechts, y höher = nach unten.
     "bottom_left": {"x": 0.0, "y": 0.0},
 }
 
 # Optionaler Rand, der bei der Teile-Erkennung ignoriert wird.
+# Rand ignorieren. Grösser = weniger Störungen am Rand, aber nutzbare Fläche wird kleiner.
 IGNORE_BORDER_MM = 0.0
 
 
 # ============================================================
-# KOORDINATENSYSTEM FUER OUTPUT
+# KOORDINATENSYSTEM FÜR OUTPUT
 # ============================================================
 
 # Fix: Ursprung oben rechts, x nach links, y nach unten.
+# Fixes Output-Koordinatensystem: Ursprung oben rechts, x nach links, y nach unten.
 COORDINATE_ORIGIN = "top_right"
 
 
@@ -170,22 +220,35 @@ COORDINATE_ORIGIN = "top_right"
 # TEILE-SEGMENTIERUNG
 # ============================================================
 
+# Segmentierungsmodus: fixed = fester Grenzwert, otsu = automatisch, adaptive = lokal anpassend.
 SEGMENTATION_THRESHOLD_MODE = "otsu"  # "fixed", "otsu", "adaptive"
+# Nur bei fixed relevant. Grösser = hellere Pixel werden eher als dunkles Teil erkannt.
 THRESHOLD_VALUE = 150
+# Nur bei adaptive relevant. Grösser = grössere lokale Umgebung, ruhiger aber weniger fein.
 ADAPTIVE_THRESHOLD_BLOCK_SIZE = 101
+# Nur bei adaptive relevant. Grösser = Schwelle wird strenger, meist weniger erkannte Fläche.
 ADAPTIVE_THRESHOLD_C = 8
 
+# Weichzeichnung vor der Segmentierung. Grösser = weniger Rauschen, aber Kanten werden weicher.
 GAUSSIAN_BLUR_KERNEL_SIZE = 7
 
+# Kleinste erlaubte Teilfläche. Grösser = kleine Störungen werden eher ignoriert.
 MIN_PART_AREA_MM2 = 500.0
+# Grösste erlaubte Teilfläche. Kleiner = grosse Fehlblobs werden eher ignoriert.
 MAX_PART_AREA_MM2 = 100000.0
 
+# Entfernt kleine weisse Störungen in der Maske. Grösser = aggressiveres Entfernen.
 MORPH_OPEN_KERNEL_SIZE = 5
+# Schliesst kleine Löcher/Lücken in Teilen. Grösser = verbindet Flächen stärker.
 MORPH_CLOSE_KERNEL_SIZE = 7
+# True = Löcher innerhalb erkannter Teile füllen.
 FILL_CONTOUR_HOLES = True
 
+# Zusätzlicher Rand um ausgeschnittene Teile in Pixeln. Grösser = mehr Umgebung im Crop.
 CROP_PADDING_PX = 0
+# Erlaubte Anzahl Teile. Gültig ist nur 4 oder 6.
 EXPECTED_PART_COUNT = [4, 6]
+# Hintergrundwert für Cutouts. 255 = weiss, 0 = schwarz.
 CUTOUT_BACKGROUND_VALUE = 255
 
 
@@ -194,7 +257,9 @@ CUTOUT_BACKGROUND_VALUE = 255
 # ============================================================
 
 # PREN-Puzzle ohne Rahmen: 18.9 x 12.6 cm
+# Erwartete Gesamtfläche aller Puzzleteile in mm2.
 EXPECTED_TOTAL_PART_AREA_MM2 = 189 * 126
+# Erlaubte Flächenabweichung. 0.01 = ±1 %.
 MAX_TOTAL_AREA_ERROR_RATIO = 0.01
 
 
@@ -202,54 +267,94 @@ MAX_TOTAL_AREA_ERROR_RATIO = 0.01
 # DEBUG-FARBEN UND DARSTELLUNG
 # ============================================================
 
+# Farben sind im OpenCV-Format BGR, nicht RGB.
+# Farbe der erkannten Teilekontur im Debug-Bild. BGR: grün.
 PART_CONTOUR_COLOR = (0, 255, 0)
+# Farbe des Schwerpunktpunktes im Debug-Bild. BGR: rot.
 PART_CENTROID_COLOR = (0, 0, 255)
+# Farbe der Bounding Box um jedes Teil. BGR: cyan/hellblau.
 PART_BOX_COLOR = (255, 255, 0)
+# Farbe der Textbeschriftung im Teile-Debug-Bild. BGR: weiss.
 PART_TEXT_COLOR = (255, 255, 255)
 
+# Radius des Mittelpunkt-Punktes im Debug-Bild. Grösser = besser sichtbar.
 PART_CENTROID_RADIUS_PX = 8
+# Schriftgrösse der Teilbeschriftung im Debug-Bild.
 PART_TEXT_FONT_SCALE = 0.7
+# Schriftstärke der Teilbeschriftung. Grösser = dicker.
 PART_TEXT_THICKNESS = 2
 
+# Farbe der ArUco-Marker-Umrandung. BGR: grün.
 COLOR_MARKER_OUTLINE = (0, 255, 0)
+# Farbe des Marker-Mittelpunktes. BGR: blau.
 COLOR_MARKER_CENTER = (255, 0, 0)
+# Farbe der Marker-ID-Beschriftung. BGR: grün.
 COLOR_MARKER_ID_TEXT = (0, 255, 0)
 
+# Farbe für Marker-Ecke 0. BGR: rot.
 COLOR_CORNER_0 = (0, 0, 255)
+# Farbe für Marker-Ecke 1. BGR: gelb.
 COLOR_CORNER_1 = (0, 255, 255)
+# Farbe für Marker-Ecke 2. BGR: cyan/hellblau.
 COLOR_CORNER_2 = (255, 255, 0)
+# Farbe für Marker-Ecke 3. BGR: magenta.
 COLOR_CORNER_3 = (255, 0, 255)
 
+# Farbe der berechneten echten A4-Eckpunkte. BGR: orange.
 COLOR_A4_POINT = (0, 165, 255)
+# Farbe der gemessenen Referenz-/Rahmenpunkte. BGR: blau-orange.
 COLOR_REFERENCE_POINT = (255, 128, 0)
+# Farbe der A4-Ecken-Beschriftung. BGR: orange.
 COLOR_A4_TEXT = (0, 165, 255)
+# Farbe der A4-Umrandung. BGR: weiss.
 COLOR_A4_POLYLINE = (255, 255, 255)
+# Farbe der Referenz-/Rahmenumrandung. BGR: blau-orange.
 COLOR_REFERENCE_POLYLINE = (255, 128, 0)
+# Farbe der Status-Texte im Debug-Bild. BGR: weiss.
 COLOR_STATUS_TEXT = (255, 255, 255)
 
+# Radius für Marker-Ecken im Debug-Bild.
 CORNER_CIRCLE_RADIUS_PX = 6
+# Radius für Marker-Mittelpunkte im Debug-Bild.
 MARKER_CENTER_RADIUS_PX = 6
+# Radius der berechneten A4-Ecken im Debug-Bild.
 A4_CORNER_RADIUS_PX = 10
+# Radius der gemessenen Referenz-/Rahmenecken im Debug-Bild.
 REFERENCE_CORNER_RADIUS_PX = 7
 
+# Textversatz der Marker-Ecknummer nach rechts. Grösser = Text weiter rechts.
 CORNER_TEXT_OFFSET_X = 8
+# Textversatz der Marker-Ecknummer nach oben. Negativer = Text weiter oben.
 CORNER_TEXT_OFFSET_Y = -8
 
+# Allgemeine Schriftgrösse für ArUco-/A4-Debug-Texte. Grösser = grössere Schrift.
 TEXT_FONT_SCALE = 0.8
+# Allgemeine Schriftstärke für ArUco-/A4-Debug-Texte. Grösser = dicker.
 TEXT_THICKNESS = 2
 
 # Zeichnen des Koordinatensystems in parts_debug.png
+# True = Koordinatenraster in parts_debug.png einzeichnen.
 DEBUG_DRAW_COORDINATE_GRID = True
+# Abstand der feinen Rasterlinien. 10.0 = 1 cm Raster, 1.0 = 1 mm Raster.
 DEBUG_GRID_SPACING_MM = 1.0       # mm
-DEBUG_GRID_MAJOR_SPACING_MM = 10.0 # stärkere linie alle x mm
+# Abstand der stärkeren Rasterlinien. 10.0 = jede 1-cm-Linie stärker.
+DEBUG_GRID_MAJOR_SPACING_MM = 10.0 # stärkere Linie alle x mm
+# Transparenz des Rasters. Grösser = Raster sichtbarer, Bild darunter dunkler.
 DEBUG_GRID_ALPHA = 0.35
+# Länge der x-/y-Achsenpfeile in mm.
 DEBUG_AXIS_LENGTH_MM = 50.0
 
+# Farbe der feinen Rasterlinien im parts_debug-Bild. BGR: grau.
 COLOR_GRID_MINOR = (120, 120, 120)
+# Farbe der stärkeren Rasterlinien. BGR: hellgrau.
 COLOR_GRID_MAJOR = (180, 180, 180)
+# Farbe der x-Achse. BGR: rot.
 COLOR_AXIS_X = (0, 0, 255)
+# Farbe der y-Achse. BGR: grün.
 COLOR_AXIS_Y = (0, 255, 0)
+# Farbe des Ursprungspunktes. BGR: weiss.
 COLOR_AXIS_ORIGIN = (255, 255, 255)
+# Farbe der Achsenbeschriftung. BGR: weiss.
 COLOR_AXIS_TEXT = (255, 255, 255)
 
 
@@ -406,6 +511,7 @@ def getInputImage():
 # ============================================================
 
 def detectArucoMarkers(imageBgr):
+    # Erkennt alle ArUco-Marker im Bild und behält nur die REQUIRED_IDS.
     arucoDictionary = cv2.aruco.getPredefinedDictionary(ARUCO_DICT)
     arucoParameters = cv2.aruco.DetectorParameters()
     arucoDetector = cv2.aruco.ArucoDetector(arucoDictionary, arucoParameters)
@@ -438,6 +544,7 @@ def validateDetectedMarkers(detectedMarkers):
 
 
 def getReferenceCornersFromMarkers(detectedMarkers):
+    # Holt genau jene Marker-Ecken, welche als Referenzpunkte für die A4-Geometrie dienen.
     validateDetectedMarkers(detectedMarkers)
 
     referenceCorners = {}
@@ -453,6 +560,7 @@ def getReferenceCornersFromMarkers(detectedMarkers):
 
 
 def getFrameSizeMm():
+    # Referenz-/Rahmengrösse = echtes A4 plus Offset links/rechts/oben/unten.
     frameWidthMm = A4_WIDTH_MM + FRAME_OFFSET_LEFT_MM + FRAME_OFFSET_RIGHT_MM
     frameHeightMm = A4_HEIGHT_MM + FRAME_OFFSET_TOP_MM + FRAME_OFFSET_BOTTOM_MM
 
@@ -489,6 +597,7 @@ def buildReferenceCornerArrayMm():
 
 
 def buildA4CornerArrayInReferenceMm():
+    # Berechnet die echten A4-Ecken innerhalb der grösseren Referenz-/Rahmenfläche.
     left = FRAME_OFFSET_LEFT_MM
     right = FRAME_OFFSET_LEFT_MM + A4_WIDTH_MM
     top = FRAME_OFFSET_TOP_MM
@@ -523,7 +632,10 @@ def transformPoints(points, homography):
 
 
 def extractA4Corners(detectedMarkers):
-    # 1. Aus den Markern die gemessene Referenz-/Rahmenflaeche im Bild holen.
+    # Diese Funktion ist der Kern der Offset-Logik:
+    # Erst wird die gemessene Rahmenfläche aufgebaut, dann werden daraus
+    # die echten A4-Ecken zurück ins Kamerabild projiziert.
+    # 1. Aus den Markern die gemessene Referenz-/Rahmenfläche im Bild holen.
     referenceCorners = getReferenceCornersFromMarkers(detectedMarkers)
 
     # 2. Homographie: Referenz-/Rahmen-mm -> Bildpixel.
@@ -531,7 +643,7 @@ def extractA4Corners(detectedMarkers):
     referenceMmPoints = buildReferenceCornerArrayMm()
     hReferenceMmToImage = cv2.getPerspectiveTransform(referenceMmPoints, referenceImagePoints)
 
-    # 3. Echte A4-Ecken innerhalb der Referenz-/Rahmenflaeche in mm definieren.
+    # 3. Echte A4-Ecken innerhalb der Referenz-/Rahmenfläche in mm definieren.
     a4CornersReferenceMm = buildA4CornerArrayInReferenceMm()
     a4ReferenceMmArray = np.array(
         [
@@ -543,7 +655,7 @@ def extractA4Corners(detectedMarkers):
         dtype=np.float32,
     )
 
-    # 4. Echte A4-Ecken zurueck ins Bild projizieren.
+    # 4. Echte A4-Ecken zurück ins Bild projizieren.
     a4ImageArray = transformPoints(a4ReferenceMmArray, hReferenceMmToImage)
 
     a4Corners = {
@@ -609,6 +721,7 @@ def warpImageToA4(imageBgr, hImageToWarp):
 
 
 def warpPxToOutputPxTopRight(xPx, yPx):
+    # Warp-Pixel haben Ursprung oben links. Für den Output wird x gespiegelt, damit Ursprung oben rechts gilt.
     warpWidthPx, _ = getWarpSizePx()
 
     xA4Px = (warpWidthPx - 1) - float(xPx)
@@ -642,6 +755,7 @@ def ensureOddKernelSize(value):
 
 
 def applyIgnoreBorder(binaryMask):
+    # Setzt einen Randbereich auf schwarz, damit Randartefakte nicht als Teile erkannt werden.
     if IGNORE_BORDER_MM <= 0:
         return binaryMask
 
@@ -662,6 +776,7 @@ def applyIgnoreBorder(binaryMask):
 
 
 def fillMaskContourHoles(binaryMask):
+    # Füllt Löcher innerhalb externer Konturen, damit Teile als volle Flächen zählen.
     contours, _ = cv2.findContours(binaryMask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
     filledMask = np.zeros(binaryMask.shape, dtype=np.uint8)
@@ -671,6 +786,9 @@ def fillMaskContourHoles(binaryMask):
 
 
 def buildPartsMask(warpedImageBgr):
+    # Erst Grau/Blur, dann Schwellwert, dann Morphologie: daraus entsteht die Teile-Maske.
+    # Aus dem entzerrten A4-Bild wird eine Binärmaske gebaut:
+    # weiss = erkanntes Teil, schwarz = Hintergrund.
     grayImage = cv2.cvtColor(warpedImageBgr, cv2.COLOR_BGR2GRAY)
     blurKernelSize = ensureOddKernelSize(GAUSSIAN_BLUR_KERNEL_SIZE)
 
@@ -722,6 +840,7 @@ def buildPartsMask(warpedImageBgr):
 
 
 def computeContourCentroid(contour):
+    # Schwerpunkt über Bildmomente; Fallback ist die Mitte der Bounding Box.
     moments = cv2.moments(contour)
 
     if moments["m00"] == 0:
@@ -735,6 +854,8 @@ def computeContourCentroid(contour):
 
 
 def findAllValidParts(binaryMask):
+    # Sucht Konturen und filtert sie über minimale/maximale Fläche.
+    # Konturen suchen und nur solche behalten, deren Fläche im erlaubten Bereich liegt.
     contours, _ = cv2.findContours(binaryMask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
     minAreaPx = MIN_PART_AREA_MM2 * (PX_PER_MM ** 2)
@@ -781,6 +902,8 @@ def sortPartsByOutputYThenOutputX(detectedParts):
 
 
 def addDerivedPartValues(detectedParts):
+    # Ergänzt sortierten Teilen Index, Namen, Schwerpunkt in px/mm und Fläche in mm2.
+    # Ergänzt berechnete Werte für JSON, Sortierung und Debug-Ausgabe.
     for i, partInfo in enumerate(detectedParts):
         centroidXpxOutput, centroidYpxOutput = warpPxToOutputPxTopRight(
             partInfo["centroidX"],
@@ -812,6 +935,7 @@ def computeTotalPartsAreaMm2(detectedParts):
 
 
 def buildAreaValidationData(detectedParts):
+    # Vergleicht gemessene Gesamtfläche mit der erwarteten PREN-Puzzlefläche.
     totalAreaMm2 = computeTotalPartsAreaMm2(detectedParts)
     expectedAreaMm2 = EXPECTED_TOTAL_PART_AREA_MM2
 
@@ -869,6 +993,7 @@ def cropPartImage(warpedImageBgr, bboxX, bboxY, bboxW, bboxH):
 
 
 def buildSinglePartMask(fullBinaryMask, contour, cropBounds):
+    # Baut eine Maske für genau ein Teil und schneidet sie auf dessen Bounding Box zu.
     singleMask = np.zeros(fullBinaryMask.shape, dtype=np.uint8)
     cv2.drawContours(singleMask, [contour], -1, 255, -1)
 
@@ -877,6 +1002,7 @@ def buildSinglePartMask(fullBinaryMask, contour, cropBounds):
 
 
 def buildPartCutout(croppedImageBgr, croppedSingleMask):
+    # Erstellt ein Debug-Cutout: Teil bleibt sichtbar, alles andere wird weiss.
     cutoutImageBgr = np.full_like(croppedImageBgr, CUTOUT_BACKGROUND_VALUE)
     cutoutImageBgr[croppedSingleMask > 0] = croppedImageBgr[croppedSingleMask > 0]
 
@@ -914,6 +1040,7 @@ def savePartOutputs(warpedImageBgr, binaryMask, detectedParts):
 
 
 def saveAlgoInputFiles(binaryMask, detectedParts):
+    # Speichert nur die Masken, welche der Algorithmus später als Input braucht.
     algoInputDirPath = clearAlgoInputFolder()
 
     for i, partInfo in enumerate(detectedParts):
@@ -942,6 +1069,7 @@ def saveAlgoInputFiles(binaryMask, detectedParts):
 # ============================================================
 
 def buildGeometryJsonData():
+    # JSON-Hilfsdaten zur Geometrie. JSON-Key-Namen bleiben bewusst stabil.
     return {
         "a4_size_mm": {
             "width": A4_WIDTH_MM,
@@ -965,6 +1093,7 @@ def buildGeometryJsonData():
 
 
 def buildPartsJsonList(detectedParts, includePaths):
+    # Baut die JSON-Liste der Teile. includePaths=True ist nur für Debug-Ausgaben.
     partsJson = []
 
     for partInfo in detectedParts:
@@ -1074,6 +1203,8 @@ def isMajorGridLine(index, spacingPx, majorSpacingPx):
 
 
 def drawCoordinateGridDebug(debugImageBgr):
+    # Zeichnet ein Raster im gleichen Koordinatensystem wie die JSON-Ausgabe.
+    # Zeichnet das feste Output-Koordinatensystem direkt ins entzerrte A4-Bild.
     if not DEBUG_DRAW_COORDINATE_GRID:
         return debugImageBgr
 
@@ -1167,6 +1298,7 @@ def drawCoordinateGridDebug(debugImageBgr):
 
 
 def drawPartsDebug(warpedImageBgr, detectedParts):
+    # Zeichnet finale Debug-Ansicht mit Raster, Konturen, Boxen und Schwerpunkten.
     debugImageBgr = warpedImageBgr.copy()
     debugImageBgr = drawCoordinateGridDebug(debugImageBgr)
 
@@ -1242,6 +1374,7 @@ def drawPartsDebug(warpedImageBgr, detectedParts):
     return debugImageBgr
 
 def drawMarkerDebug(imageBgr, detectedMarkers):
+    # Zeichnet Markerumrisse, Marker-IDs und die vier nummerierten Marker-Ecken.
     debugImageBgr = imageBgr.copy()
     cornerColors = [COLOR_CORNER_0, COLOR_CORNER_1, COLOR_CORNER_2, COLOR_CORNER_3]
 
@@ -1375,6 +1508,7 @@ def buildRotationStatusText():
 
 
 def drawCombinedDebug(imageBgr, detectedMarkers, a4Corners, referenceCorners):
+    # Kombiniert Markerdebug, Referenzrahmen, echte A4-Ecken und Status-Texte.
     debugImageBgr = drawMarkerDebug(imageBgr, detectedMarkers)
     debugImageBgr = drawA4AndReferenceDebug(debugImageBgr, a4Corners, referenceCorners)
 
@@ -1485,6 +1619,8 @@ def printPartsInfo(detectedParts):
 # ============================================================
 
 def main():
+    # Ablauf: Bild holen, Marker erkennen, A4 entzerren, Teile segmentieren,
+    # Debug-Dateien speichern und Algorithmus-Input schreiben.
     outputImagePath = buildOutputPath(OUTPUT_IMAGE_FILENAME)
     outputDebugPath = buildOutputPath(OUTPUT_DEBUG_FILENAME)
     outputWarpPath = buildOutputPath(OUTPUT_WARP_FILENAME)
