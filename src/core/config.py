@@ -179,8 +179,12 @@ class SolverTuning:
     max_iterations: int = 600
 
     # --- Edge Placement (edge_placement.py) ---
-    slide_positions: int = 8  # Gitterpositionen pro Achse (Maximum; Frühabbruch möglich)
-    slide_patience: int = 3  # Aufeinanderfolgende Positionen ohne Verbesserung → Abbruch
+    slide_positions: int = (
+        8  # Gitterpositionen pro Achse (Maximum; Frühabbruch möglich)
+    )
+    slide_patience: int = (
+        3  # Aufeinanderfolgende Positionen ohne Verbesserung → Abbruch
+    )
     center_piece_margin: int = 25  # mm
     gap_dilation_mm: float = (
         3.0  # Randverbreiterung (mm) der Teile beim Solver, um Luecken zu kompensieren
@@ -223,7 +227,7 @@ class HardwareConfig:
 
     serial_port: str = "/dev/serial0"
     baud_rate: int = 115200
-    enabled: bool = False  # Lokal deaktiviert; True auf dem Roboter
+    enabled: bool = True  # Lokal deaktiviert; True auf dem Roboter
 
 
 @dataclass
