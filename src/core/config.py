@@ -51,7 +51,7 @@ class ResolutionConfig:
     analysis_px_per_mm: float = (
         4.0  # Analyse-Aufloesung (einmalig; hoeher = sauberere Erkennung)
     )
-    finetune_max_px_per_mm: float = 4.0  # Obergrenze fuer Fine-Tuning (absolute px/mm)
+    finetune_max_px_per_mm: float = 3.0  # Obergrenze fuer Fine-Tuning (absolute px/mm)
     finetune_max_scale: float = 0.5  # Obergrenze fuer Fine-Tuning (relativ zu native)
 
     # Physikalische Abmessungen in mm
@@ -142,20 +142,20 @@ class SolverTuning:
     overlap_penalty: float = 2.0
     coverage_reward: float = 1.0
     gap_penalty: float = 0.2
-    score_threshold: float = 100000.0
+    score_threshold: float = 3100.0
 
     # --- Corner Detection (corner_detector.py) ---
     # Alle Pixel-Werte in solver-px (= mm bei solver_px_per_mm=1.0)
-    corner_angle_tolerance: int = 6  # Grad Abweichung von 90°
+    corner_angle_tolerance: int = 2  # Grad Abweichung von 90°
     corner_min_straightness: float = 0.90
     corner_min_edge_length: int = 20  # mm
     corner_min_quality: float = 0.68
-    corner_max_overhang: int = 10  # mm
-    corner_min_extent: int = 35  # mm
+    corner_max_overhang: int = 12  # mm
+    corner_min_extent: int = 30  # mm
     corner_contour_epsilon: float = 0.030  # Anteil des Umfangs
 
     # --- Edge Detection (edge_detector.py) ---
-    edge_min_length: int = 15  # mm
+    edge_min_length: int = 25  # mm
     edge_min_straightness: float = 0.93
     edge_min_score: float = 0.75
     edge_contour_epsilon: float = 0.012  # Anteil des Umfangs
@@ -165,37 +165,39 @@ class SolverTuning:
     classify_edge_threshold: float = 0.8
 
     # --- Corner Fitter (corner_fitter.py) ---
-    fitter_coarse_step: int = 6  # Grad
-    fitter_fine_step: float = 0.5  # Grad
-    fitter_fine_range: float = 10.0  # ±Grad um besten Winkel
-    fitter_outside_limit: int = 50  # mm
-    fitter_edge_touch_bonus: int = 50000
-    fitter_outside_penalty: int = 100
+    fitter_coarse_step: int = 2  # Grad
+    fitter_fine_step: float = 0.2  # Grad
+    fitter_fine_range: float = 6.0  # ±Grad um besten Winkel
+    fitter_outside_limit: int = 80  # mm
+    fitter_edge_touch_bonus: int = 5000
+    fitter_outside_penalty: int = 200
     fitter_edge_touch_distance: int = 5  # mm
 
     # --- Iterative Solver (iterative_solver.py) ---
     initial_corner_count: int = 60
-    max_corners_to_refine: int = 20
+    max_corners_to_refine: int = 1
     max_iterations: int = 400
 
     # --- Edge Placement (edge_placement.py) ---
     slide_positions: int = (
-        8  # Gitterpositionen pro Achse (Maximum; Frühabbruch möglich)
+        6  # Gitterpositionen pro Achse (Maximum; Frühabbruch möglich)
     )
     slide_patience: int = (
-        3  # Aufeinanderfolgende Positionen ohne Verbesserung → Abbruch
+        2  # Aufeinanderfolgende Positionen ohne Verbesserung → Abbruch
     )
     center_piece_margin: int = 25  # mm
     gap_dilation_mm: float = (
-        1.0  # Randverbreiterung (mm) der Teile beim Solver, um Luecken zu kompensieren
+        0.0  # Randverbreiterung (mm) der Teile beim Solver, um Luecken zu kompensieren
     )
+    pull_to_center_mm: float = 1.0  # Nach dem Solver: Teile um diesen Betrag zur Mitte ziehen (schliesst Luecken)
 
     # --- Fine-Tuning (fine_tuner.py) ---
+    skip_finetune: bool = True  # Fine-Tuning ueberspringen (schneller, weniger genau)
     finetune_xy_range: int = 2  # Pixel bei finetune_scale=1.0 (±2mm)
     finetune_xy_step: int = 1  # Pixel pro Schritt → 5 Positionen pro Achse
-    finetune_theta_range: float = 5.0  # ±Grad
+    finetune_theta_range: float = 0.0  # ±Grad
     finetune_theta_step: float = 0.5  # Grad pro Schritt → 7 Winkel
-    finetune_max_passes: int = 5  # pro Durchlauf: 6 Teile × 25xy × 7theta = 1050
+    finetune_max_passes: int = 3  # pro Durchlauf: 6 Teile × 25xy × 7theta = 1050
 
     def scaled(self, resolution_scale: float) -> "SolverTuning":
         """Gibt eine Kopie zurueck, bei der alle Pixel-basierten Parameter mit

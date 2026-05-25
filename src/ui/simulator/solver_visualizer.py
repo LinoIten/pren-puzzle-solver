@@ -11,6 +11,7 @@ from kivy.uix.label import Label
 
 from src.utils.geometry import rotate_and_crop
 from ...solver.validation.scorer import PlacementScorer
+from ...ui.simulator.guess_renderer import GuessRenderer
 from .movement_renderer import MovementRenderer
 
 
@@ -172,9 +173,7 @@ class SolverVisualizer(BoxLayout):
 
             rendered = renderer.render(guess, self.solver_data["piece_shapes"])
             score = scorer.score(rendered, self.solver_data["target"])
-            rendered_color = renderer.render_debug(
-                guess, self.solver_data["piece_shapes"]
-            )
+            rendered_color = self._render_guess_color(guess, debug=True)
 
             if "puzzle_pieces" in self.solver_data and "surfaces" in self.solver_data:
                 display = self._create_source_target_visualization(
@@ -210,9 +209,7 @@ class SolverVisualizer(BoxLayout):
             rendered = renderer.render(guess, self.solver_data["piece_shapes"])
             score = scorer.score(rendered, self.solver_data["target"])
 
-            rendered_color = renderer.render_debug(
-                guess, self.solver_data["piece_shapes"]
-            )
+            rendered_color = self._render_guess_color(guess, debug=True)
 
             if "puzzle_pieces" in self.solver_data and "surfaces" in self.solver_data:
                 display = self._create_source_target_visualization(
@@ -252,11 +249,7 @@ class SolverVisualizer(BoxLayout):
             self.status_label.text = "No best solution found!"
             return
 
-        # Use the renderer passed from pipeline
-        renderer = self.solver_data["renderer"]
-        rendered_color = renderer.render_color(
-            best_guess, self.solver_data["piece_shapes"]
-        )
+        rendered_color = self._render_guess_color(best_guess, debug=False)
 
         # Create side-by-side visualization
         if "puzzle_pieces" in self.solver_data and "surfaces" in self.solver_data:
@@ -327,18 +320,24 @@ class SolverVisualizer(BoxLayout):
 
         print(f"📐 Creating visualization (movements: {show_movements})...")
 
-        global_width = surfaces["global"]["width"]
-        global_height = surfaces["global"]["height"]
+        # Scale the entire canvas to the best available display resolution
+        display_shapes, vis_scale = self._best_display_shapes()
+
+        def _s(v):
+            return int(round(v * vis_scale))
+
+        global_width = _s(surfaces["global"]["width"])
+        global_height = _s(surfaces["global"]["height"])
         canvas = np.full((global_height, global_width, 3), 200, dtype=np.uint8)
 
-        source_offset_x = surfaces["source"]["offset_x"]
-        source_offset_y = surfaces["source"]["offset_y"]
-        target_offset_x = surfaces["target"]["offset_x"]
-        target_offset_y = surfaces["target"]["offset_y"]
+        source_offset_x = _s(surfaces["source"]["offset_x"])
+        source_offset_y = _s(surfaces["source"]["offset_y"])
+        target_offset_x = _s(surfaces["target"]["offset_x"])
+        target_offset_y = _s(surfaces["target"]["offset_y"])
 
         # Fill areas white, draw borders
-        source_w, source_h = surfaces["source"]["width"], surfaces["source"]["height"]
-        target_w, target_h = surfaces["target"]["width"], surfaces["target"]["height"]
+        source_w, source_h = _s(surfaces["source"]["width"]), _s(surfaces["source"]["height"])
+        target_w, target_h = _s(surfaces["target"]["width"]), _s(surfaces["target"]["height"])
 
         canvas[
             source_offset_y : source_offset_y + source_h,
@@ -377,12 +376,13 @@ class SolverVisualizer(BoxLayout):
         for piece in puzzle_pieces:
             piece_id = int(piece.id)
 
-            if piece_id in self.solver_data["piece_shapes"]:
-                shape = self.solver_data["piece_shapes"][piece_id]
+            shapes_to_use = display_shapes
+            if piece_id in shapes_to_use:
+                shape = shapes_to_use[piece_id]
                 rotated = self._rotate_shape(shape, piece.pick_pose.theta)
-                # pick_pose is the centroid; offset by half shape size to get top-left
-                x = int(piece.pick_pose.x) - rotated.shape[1] // 2 + source_offset_x
-                y = int(piece.pick_pose.y) - rotated.shape[0] // 2 + source_offset_y
+                # pick_pose is in solver pixels; scale to vis coordinates
+                x = int(_s(piece.pick_pose.x)) - rotated.shape[1] // 2 + source_offset_x
+                y = int(_s(piece.pick_pose.y)) - rotated.shape[0] // 2 + source_offset_y
                 color = piece_colors[piece_id % len(piece_colors)]
                 faded_color = tuple(int(c * 0.7) for c in color)
 
@@ -411,9 +411,11 @@ class SolverVisualizer(BoxLayout):
             target_offset_y : target_offset_y + target_h,
             target_offset_x : target_offset_x + target_w,
         ]
-        if rendered_color.shape[:2] == target_region.shape[:2]:
-            mask = np.any(rendered_color > 0, axis=2)
-            target_region[mask] = rendered_color[mask]
+        rc = rendered_color
+        if rc.shape[:2] != target_region.shape[:2]:
+            rc = cv2.resize(rc, (target_region.shape[1], target_region.shape[0]), interpolation=cv2.INTER_AREA)
+        mask = np.any(rc > 0, axis=2)
+        target_region[mask] = rc[mask]
 
         # Add COM dots if requested
         if show_movements and "movement_data" in self.solver_data:
@@ -424,6 +426,32 @@ class SolverVisualizer(BoxLayout):
     def _rotate_shape(self, shape: np.ndarray, angle: float) -> np.ndarray:
         """Rotate a shape by angle degrees and crop to tight bounding box."""
         return rotate_and_crop(shape, angle)
+
+    def _render_guess_color(self, guess, debug=False):
+        """Render using the highest-resolution shapes available (native > fine > solver)."""
+        shapes, ratio = self._best_display_shapes()
+
+        target = self.solver_data["target"]
+        disp_w = int(round(target.shape[1] * ratio))
+        disp_h = int(round(target.shape[0] * ratio))
+        disp_renderer = GuessRenderer(width=disp_w, height=disp_h)
+        scaled_guess = [
+            {**p, "x": p["x"] * ratio, "y": p["y"] * ratio}
+            for p in guess
+        ]
+        if debug:
+            return disp_renderer.render_debug(scaled_guess, shapes)
+        return disp_renderer.render_color(scaled_guess, shapes)
+
+    def _best_display_shapes(self):
+        """Return (piece_shapes, ratio_vs_solver) for the best available resolution."""
+        display = self.solver_data.get("piece_shapes_display")
+        if display:
+            return display, self.solver_data.get("display_ratio", 1.0)
+        fine = self.solver_data.get("piece_shapes_fine")
+        if fine:
+            return fine, self.solver_data.get("finetune_ratio", 1.0)
+        return self.solver_data["piece_shapes"], 1.0
 
     def _place_shape_color_global(
         self, canvas: np.ndarray, shape: np.ndarray, x: int, y: int, color: tuple

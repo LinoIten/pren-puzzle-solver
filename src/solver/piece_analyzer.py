@@ -81,24 +81,27 @@ class PieceAnalyzer:
         for piece in all_with_corners:
             best_corner_quality = max(c.quality for c in piece.corners)
             total_corner_quality = sum(c.quality for c in piece.corners)
-            corner_scores.append((piece, best_corner_quality, total_corner_quality, len(piece.corners)))
+            best_edge_quality = max((e.quality for e in piece.edges), default=0.0)
+            # Penalize pieces where edge dominates over corners
+            corner_dominance = best_corner_quality - best_edge_quality
+            corner_scores.append((piece, best_corner_quality, total_corner_quality, len(piece.corners), corner_dominance))
 
-        corner_scores.sort(key=lambda x: (x[2], x[3], x[1]), reverse=True)
+        corner_scores.sort(key=lambda x: (x[4], x[2], x[3], x[1]), reverse=True)
 
         print(f"      Corner piece rankings (all pieces with corner detections):")
-        for i, (piece, best_qual, total_qual, count) in enumerate(corner_scores):
-            print(f"        {i+1}. Piece {piece.id} ({piece.piece_type}): {count} corners, total_quality={total_qual:.2f}, best={best_qual:.2f}")
+        for i, (piece, best_qual, total_qual, count, dominance) in enumerate(corner_scores):
+            print(f"        {i+1}. Piece {piece.id} ({piece.piece_type}): {count} corners, total_quality={total_qual:.2f}, best={best_qual:.2f}, dominance={dominance:.2f}")
 
         true_corners = corner_scores[:4]
         demoted_pieces = corner_scores[4:]
 
-        for piece, _, _, _ in true_corners:
+        for piece, _, _, _, _ in true_corners:
             if piece.piece_type != "corner":
                 old_type = piece.piece_type
                 piece.piece_type = "corner"
                 print(f"        📈 Promoted piece {piece.id}: {old_type} → corner")
 
-        for piece, _, _, _ in demoted_pieces:
+        for piece, _, _, _, _ in demoted_pieces:
             if piece.piece_type == "corner":
                 piece.piece_type = "edge"
                 print(f"        📉 Demoted piece {piece.id}: corner → edge")

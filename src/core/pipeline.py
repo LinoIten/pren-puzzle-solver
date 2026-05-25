@@ -123,7 +123,7 @@ class PuzzlePipeline:
             # Phase 1: Vision
             self.logger.info("Phase 1: Bildverarbeitung")
             _vision_start = time()
-            pieces, piece_shapes, piece_shapes_fine, corner_info, puzzle_pieces = (
+            pieces, piece_shapes, piece_shapes_fine, piece_shapes_display, corner_info, puzzle_pieces = (
                 self._process_vision()
             )
             _time_vision= time() - _vision_start
@@ -133,7 +133,7 @@ class PuzzlePipeline:
             self.logger.info("Phase 2: Puzzle loesen")
             _solve_start = time()
             solution = self._solve_puzzle(
-                pieces, piece_shapes, piece_shapes_fine, corner_info, puzzle_pieces
+                pieces, piece_shapes, piece_shapes_fine, piece_shapes_display, corner_info, puzzle_pieces
             )
             _solve_elapsed = time() - _solve_start
 
@@ -279,6 +279,9 @@ class PuzzlePipeline:
             scale=self.resolution.finetune_scale
         )
 
+        # Native-resolution copy for display only
+        _, piece_shapes_display = generator.load_pieces_for_solver(scale=1.0)
+
         # Analysis at higher resolution for cleaner corner/edge detection (runs once)
         _, piece_shapes_analysis = generator.load_pieces_for_solver(
             scale=self.resolution.analysis_scale
@@ -320,7 +323,7 @@ class PuzzlePipeline:
         self.logger.info(f"\n  → {len(piece_ids)} Teile geladen und analysiert")
         self.logger.info("=" * 80 + "\n")
 
-        return piece_ids, piece_shapes, piece_shapes_fine, {}, puzzle_pieces
+        return piece_ids, piece_shapes, piece_shapes_fine, piece_shapes_display, {}, puzzle_pieces
 
     def _process_vision_camera(self, input_dir: str):
         """Kamera-Pfad: lädt Teile aus parts.json + PNG-Masken."""
@@ -360,6 +363,7 @@ class PuzzlePipeline:
         _, piece_shapes_fine = loader.load_pieces_for_solver(
             scale=self.resolution.finetune_scale
         )
+        _, piece_shapes_display = loader.load_pieces_for_solver(scale=1.0)
         _, piece_shapes_analysis = loader.load_pieces_for_solver(
             scale=self.resolution.analysis_scale
         )
@@ -400,10 +404,10 @@ class PuzzlePipeline:
         self.logger.info(f"\n  → {len(piece_ids)} Teile geladen und analysiert")
         self.logger.info("=" * 80 + "\n")
 
-        return piece_ids, piece_shapes, piece_shapes_fine, {}, puzzle_pieces
+        return piece_ids, piece_shapes, piece_shapes_fine, piece_shapes_display, {}, puzzle_pieces
 
     def _solve_puzzle(
-        self, pieces, piece_shapes, piece_shapes_fine, piece_corner_info, puzzle_pieces
+        self, pieces, piece_shapes, piece_shapes_fine, piece_shapes_display, piece_corner_info, puzzle_pieces
     ):
         """Puzzle loesen mit iterativem Ansatz"""
         self.logger.info("  → Layout berechnen...")
@@ -440,7 +444,7 @@ class PuzzlePipeline:
             piece_shapes=piece_shapes,
             target=target,
             puzzle_pieces=puzzle_pieces,
-            score_threshold=self.tuning.score_threshold,
+            score_threshold=self.tuning.score_threshold * self._score_weight,
             initial_corner_count=self.tuning.initial_corner_count,
             max_corners_to_refine=self.tuning.max_corners_to_refine,
             max_iterations=self.tuning.max_iterations,
@@ -452,16 +456,26 @@ class PuzzlePipeline:
             self.logger.info(f"  ✓ Loesung gefunden mit Score: {solution.score:.2f}")
 
         # Phase 2b: Fine-tuning auf voller Aufloesung
-        self.logger.info("Phase 2b: Feinabstimmung (volle Aufloesung)")
         all_guesses_for_finetune = (
             solution.all_guesses if solution.all_guesses is not None else []
         )
-        fine_placements, fine_score = self._finetune_solution(
-            solution.remaining_placements,
-            piece_shapes_fine,
-            target,
-            all_guesses_for_finetune,
-        )
+        if self.config.tuning.skip_finetune:
+            self.logger.info("Phase 2b: Feinabstimmung übersprungen (skip_finetune=True)")
+            ratio = self.resolution.finetune_ratio
+            fine_placements = [
+                {**p, "x": p["x"] * ratio, "y": p["y"] * ratio}
+                for p in solution.remaining_placements
+            ]
+            fine_score = solution.score
+        else:
+            self.logger.info("Phase 2b: Feinabstimmung (volle Aufloesung)")
+            fine_placements, fine_score = self._finetune_solution(
+                solution.remaining_placements,
+                piece_shapes_fine,
+                target,
+                all_guesses_for_finetune,
+            )
+        fine_placements = self._pull_to_center(fine_placements, piece_shapes_fine)
         # fine_placements are in fine-coordinate space.
         # Convert back to coarse for the visualizer/pipeline dict.
         ratio = self.resolution.finetune_ratio
@@ -538,6 +552,10 @@ class PuzzlePipeline:
             "initial_placements": initial_placements,
             "guesses": all_guesses,
             "piece_shapes": piece_shapes,
+            "piece_shapes_fine": piece_shapes_fine,
+            "piece_shapes_display": piece_shapes_display,
+            "display_ratio": self.resolution.native_px_per_mm / self.resolution.solver_px_per_mm,
+            "finetune_ratio": self.resolution.finetune_ratio,
             "best_score": best_score,
             "best_guess": best_guess,
             "best_guess_index": best_guess_index,
@@ -678,6 +696,39 @@ class PuzzlePipeline:
                 self.logger.info(f"  Direction: {angle:.1f}° from horizontal")
 
         self.logger.info("\n" + "=" * 80 + "\n")
+
+    def _pull_to_center(self, placements, piece_shapes_fine):
+        """Zieht alle Platzierungen (fine-Koordinaten) um pull_to_center_mm zur Puzzlemitte.
+
+        Benutzt den Schwerpunkt (COM) des rotierten Teils als Bezugspunkt, nicht die
+        Bounding-Box-Ecke — sonst variiert der Zug je nach Rotation.
+        """
+        pull_mm = self.config.tuning.pull_to_center_mm
+        if not placements or pull_mm <= 0:
+            return placements
+        fs = self.resolution.finetune_px_per_mm
+        pull_px = pull_mm * fs
+        cx = self.resolution.fine_a4_width / 2.0
+        cy = self.resolution.fine_a4_height / 2.0
+        result = []
+        for p in placements:
+            shape = piece_shapes_fine.get(p["piece_id"])
+            com = (
+                MovementAnalyzer.calculate_piece_com(shape, p["x"], p["y"], p["theta"])
+                if shape is not None else None
+            )
+            if com is None:
+                result.append(p)
+                continue
+            dx = cx - com[0]
+            dy = cy - com[1]
+            # Pull each axis independently so corner pieces (diagonal) close the
+            # same gap per side as edge pieces (single axis).
+            shift_x = min(abs(dx), pull_px) * (1 if dx >= 0 else -1)
+            shift_y = min(abs(dy), pull_px) * (1 if dy >= 0 else -1)
+            result.append({**p, "x": p["x"] + shift_x, "y": p["y"] + shift_y})
+        self.logger.info(f"  Center pull: {pull_px:.1f}px ({pull_mm}mm)")
+        return result
 
     def _finetune_solution(
         self, placements, piece_shapes_fine, target_coarse, all_guesses
@@ -837,6 +888,10 @@ class PuzzlePipeline:
         solver_data = {
             "guesses": solution["guesses"],
             "piece_shapes": solution["piece_shapes"],
+            "piece_shapes_fine": solution.get("piece_shapes_fine"),
+            "piece_shapes_display": solution.get("piece_shapes_display"),
+            "finetune_ratio": solution.get("finetune_ratio", 1.0),
+            "display_ratio": solution.get("display_ratio", 1.0),
             "target": solution["target"],
             "source": solution["source"],
             "surfaces": solution["surfaces"],
@@ -846,7 +901,7 @@ class PuzzlePipeline:
             "best_guess_index": solution.get("best_guess_index", 0),
             "renderer": solution["renderer"],
             "puzzle_pieces": solution["puzzle_pieces"],
-            "movement_data": movement_data,  # ADD: Pre-calculated movement data
+            "movement_data": movement_data,
         }
 
         self.logger.info(
