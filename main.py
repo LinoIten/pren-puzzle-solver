@@ -40,21 +40,14 @@ def main():
         if _six_pieces:
             config.vision.num_cuts = 3
 
-        input_dir = project_root / "input"
-        puzzle_dir = None
+        puzzle_dir = str(project_root / "input")
 
         if _no_camera:
             logger.info("--no-camera: Kameramodul wird übersprungen, verwende vorhandene Eingabe.")
         else:
-            logger.info("Starte Kameramodul...")
-            cam_module.main()
-            logger.info("Kameramodul abgeschlossen")
+            logger.info("Kameramodul gefunden")
 
-        if (input_dir / "parts.json").exists():
-            puzzle_dir = str(input_dir)
-            logger.info(f"Kamera-Eingabe erkannt: {input_dir}")
-
-        pipeline = PuzzlePipeline(config, show_ui=True, puzzle_dir=puzzle_dir)
+        pipeline = PuzzlePipeline(config, show_ui=False, puzzle_dir=puzzle_dir)
         result = pipeline.run()
         
         if result.success:

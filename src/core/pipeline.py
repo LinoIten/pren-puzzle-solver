@@ -25,6 +25,7 @@ from ..solver.validation.scorer import PlacementScorer
 from ..ui.simulator.guess_renderer import GuessRenderer
 from ..utils.logger import setup_logger
 from ..vision.camera_loader import CameraLoader
+from ..vision.cam_module import main as CameraProcess
 from ..vision.mock_puzzle_creator import MockPuzzleGenerator
 from .config import Config
 
@@ -110,6 +111,12 @@ class PuzzlePipeline:
                         duration=0,
                         message="Start durch Hardware-Button fehlgeschlagen",
                     )
+
+            # Pahse 0.5: Bildaufnahme
+            self.logger.info("Phase 0.5: Bildaufnahme")
+            CameraProcess()
+            self.logger.info("Kameramodul abgeschossen")
+
 
             # Phase 1: Vision
             self.logger.info("Phase 1: Bildverarbeitung")
