@@ -241,7 +241,7 @@ class SolverVisualizer(BoxLayout):
             self.pause_visualization(None)
 
         # Get the pre-calculated best guess
-        best_guess = self.solver_data.get("best_guess")
+        best_guess = self.solver_data.get("final_fine_placements") or self.solver_data.get("best_guess")
         best_guess_index = self.solver_data.get("best_guess_index", 0)
         best_score = self.solver_data.get("best_score", 0)
 
@@ -430,38 +430,35 @@ class SolverVisualizer(BoxLayout):
     def _render_guess_color(self, guess, debug=False):
         """Render using the highest-resolution shapes available (native > fine > solver).
 
-        Solver coordinates are snapped to walls in display space when the piece is
-        flush against a wall in solver space.  Without this, integer-rounding
-        differences between solver-scale and display-scale piece widths create a
-        visible gap that doesn't exist in the actual placement data.
+        If final_fine_placements is available and matches the passed guess, render
+        directly from fine coordinates so the display exactly matches what the robot
+        receives — no coarse round-trip.
         """
-        shapes, ratio = self._best_display_shapes()
-        solver_shapes = self.solver_data["piece_shapes"]
+        fine_placements = self.solver_data.get("final_fine_placements")
+        fine_shapes = self.solver_data.get("piece_shapes_fine")
+        if fine_placements is not None and fine_shapes is not None and guess is fine_placements:
+            # Render directly from fine coords: ratio = display_px / fine_px
+            finetune_ratio = self.solver_data.get("finetune_ratio", 1.0)
+            display_ratio = self.solver_data.get("display_ratio", finetune_ratio)
+            fine_to_display = display_ratio / finetune_ratio
+            target = self.solver_data["target"]
+            solver_h, solver_w = target.shape
+            disp_w = int(round(solver_w * display_ratio))
+            disp_h = int(round(solver_h * display_ratio))
+            disp_renderer = GuessRenderer(width=disp_w, height=disp_h)
+            scaled = [{**p, "x": p["x"] * fine_to_display, "y": p["y"] * fine_to_display} for p in fine_placements]
+            shapes = self.solver_data.get("piece_shapes_display") or fine_shapes
+            if debug:
+                return disp_renderer.render_debug(scaled, shapes)
+            return disp_renderer.render_color(scaled, shapes)
 
+        shapes, ratio = self._best_display_shapes()
         target = self.solver_data["target"]
         solver_h, solver_w = target.shape
         disp_w = int(round(solver_w * ratio))
         disp_h = int(round(solver_h * ratio))
         disp_renderer = GuessRenderer(width=disp_w, height=disp_h)
-
-        scaled_guess = []
-        for p in guess:
-            pid = p["piece_id"]
-            theta = p["theta"]
-            s_shape = solver_shapes.get(pid)
-            d_shape = shapes.get(pid)
-            if s_shape is not None and d_shape is not None:
-                rs = rotate_and_crop(s_shape, theta)
-                rd = rotate_and_crop(d_shape, theta)
-                ps_h, ps_w = rs.shape
-                pd_h, pd_w = rd.shape
-                x_s, y_s = p["x"], p["y"]
-                x_d = 0.0 if x_s < 0.5 else (float(disp_w - pd_w) if x_s + ps_w > solver_w - 0.5 else x_s * ratio)
-                y_d = 0.0 if y_s < 0.5 else (float(disp_h - pd_h) if y_s + ps_h > solver_h - 0.5 else y_s * ratio)
-                scaled_guess.append({**p, "x": x_d, "y": y_d})
-            else:
-                scaled_guess.append({**p, "x": p["x"] * ratio, "y": p["y"] * ratio})
-
+        scaled_guess = [{**p, "x": p["x"] * ratio, "y": p["y"] * ratio} for p in guess]
         if debug:
             return disp_renderer.render_debug(scaled_guess, shapes)
         return disp_renderer.render_color(scaled_guess, shapes)

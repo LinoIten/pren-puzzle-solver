@@ -580,6 +580,7 @@ class PuzzlePipeline:
             "best_score": best_score,
             "best_guess": best_guess,
             "best_guess_index": best_guess_index,
+            "final_fine_placements": fine_placements,
             "renderer": self.renderer,
             "puzzle_pieces": puzzle_pieces,
         }
@@ -721,33 +722,59 @@ class PuzzlePipeline:
     def _pull_to_center(self, placements, piece_shapes_fine):
         """Zieht alle Platzierungen (fine-Koordinaten) um pull_to_center_mm zur Puzzlemitte.
 
-        Benutzt den Schwerpunkt (COM) des rotierten Teils als Bezugspunkt, nicht die
-        Bounding-Box-Ecke — sonst variiert der Zug je nach Rotation.
+        Richtung basiert auf der Klassifikation des Teils:
+        - Edge-Teile (haben 'side'): senkrecht zur Wand einwärts.
+        - Corner/Center-Teile: diagonal einwärts, bestimmt durch Bounding-Box-Mitte.
         """
         pull_mm = self.config.tuning.pull_to_center_mm
         if not placements or pull_mm <= 0:
             return placements
         fs = self.resolution.finetune_px_per_mm
         pull_px = pull_mm * fs
-        cx = self.resolution.fine_a4_width / 2.0
-        cy = self.resolution.fine_a4_height / 2.0
+        canvas_cx = self.resolution.fine_a4_width / 2.0
+        canvas_cy = self.resolution.fine_a4_height / 2.0
+        from src.utils.geometry import rotate_and_crop as _rac
         result = []
         for p in placements:
+            side = p.get("side")
+            if side:
+                # Edge piece: pull straight inward, perpendicular to its wall
+                if side == "left":
+                    shift_x, shift_y = pull_px, 0.0
+                elif side == "right":
+                    shift_x, shift_y = -pull_px, 0.0
+                elif side == "top":
+                    shift_x, shift_y = 0.0, pull_px
+                else:  # bottom
+                    shift_x, shift_y = 0.0, -pull_px
+                result.append({**p, "x": p["x"] + shift_x, "y": p["y"] + shift_y})
+                continue
+
+            # Corner/center: check all four edges of the bounding box against walls.
+            # top-left alone is unreliable for large pieces — a tall bottom piece
+            # has its top-left y in the upper half of the canvas.
             shape = piece_shapes_fine.get(p["piece_id"])
-            com = (
-                MovementAnalyzer.calculate_piece_com(shape, p["x"], p["y"], p["theta"])
-                if shape is not None else None
-            )
-            if com is None:
+            canvas_w = self.resolution.fine_a4_width
+            canvas_h = self.resolution.fine_a4_height
+            if shape is None:
                 result.append(p)
                 continue
-            dx = cx - com[0]
-            dy = cy - com[1]
-            # Pull each axis independently so corner pieces (diagonal) close the
-            # same gap per side as edge pieces (single axis).
-            shift_x = min(abs(dx), pull_px) * (1 if dx >= 0 else -1)
-            shift_y = min(abs(dy), pull_px) * (1 if dy >= 0 else -1)
-            result.append({**p, "x": p["x"] + shift_x, "y": p["y"] + shift_y})
+            rotated = _rac(shape, p["theta"])
+            ph, pw = rotated.shape
+            thr = pull_px * 8
+            x0, y0, x1, y1 = p["x"], p["y"], p["x"] + pw, p["y"] + ph
+            new_x, new_y = p["x"], p["y"]
+            # Snap to wall + pull_px gap — avoids rounding accumulation from wall-align
+            if x0 <= thr:
+                new_x = pull_px
+            elif x1 >= canvas_w - thr:
+                new_x = float(canvas_w - pw) - pull_px
+            if y0 <= thr:
+                new_y = pull_px
+            elif y1 >= canvas_h - thr:
+                new_y = float(canvas_h - ph) - pull_px
+            result.append({**p, "x": new_x, "y": new_y})
+
         self.logger.info(f"  Center pull: {pull_px:.1f}px ({pull_mm}mm)")
         return result
 

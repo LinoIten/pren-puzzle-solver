@@ -225,6 +225,9 @@ def slide_along_axis(
     )
     piece_h, piece_w = rotated_mask.shape
 
+    # Pre-render already-placed pieces once; stamp only the sliding piece per iteration
+    static_canvas = renderer.render_static(current_placements, piece_shapes)
+
     best_placement = initial_placement.copy()
     best_score = -float("inf")
     no_improve_streak = 0
@@ -237,11 +240,10 @@ def slide_along_axis(
             test_placement = initial_placement.copy()
             test_placement["y"] = float(y_pos)
 
-            test_placements = current_placements + [test_placement]
-            rendered = renderer.render(test_placements, piece_shapes)
+            rendered = renderer.render_on_base(static_canvas, rotated_mask, int(initial_placement["x"]), int(y_pos))
             score = scorer.score(rendered, target)
 
-            all_guesses.append(test_placements.copy())
+            all_guesses.append((current_placements + [test_placement]).copy())
             all_scores.append(score)
 
             if score > best_score:
@@ -260,11 +262,10 @@ def slide_along_axis(
             test_placement = initial_placement.copy()
             test_placement["x"] = float(x_pos)
 
-            test_placements = current_placements + [test_placement]
-            rendered = renderer.render(test_placements, piece_shapes)
+            rendered = renderer.render_on_base(static_canvas, rotated_mask, int(x_pos), int(initial_placement["y"]))
             score = scorer.score(rendered, target)
 
-            all_guesses.append(test_placements.copy())
+            all_guesses.append((current_placements + [test_placement]).copy())
             all_scores.append(score)
 
             if score > best_score:
