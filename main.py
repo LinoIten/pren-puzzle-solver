@@ -14,8 +14,8 @@ _no_camera = "--no-camera" in sys.argv
 if _no_camera:
     sys.argv.remove("--no-camera")
 
-from src.core.pipeline import PuzzlePipeline
 from src.core.config import Config
+from src.core.pipeline import PuzzlePipeline
 from src.utils.logger import setup_logger
 from src.vision import cam_module
 
@@ -33,7 +33,6 @@ def main():
     logger.info("=" * 60)
 
     try:
-
         config = Config()
         if _regenerate:
             config.vision.regenerate_mock = True
@@ -43,25 +42,27 @@ def main():
         puzzle_dir = str(project_root / "input")
 
         if _no_camera:
-            logger.info("--no-camera: Kameramodul wird übersprungen, verwende vorhandene Eingabe.")
+            logger.info(
+                "--no-camera: Kameramodul wird übersprungen, verwende vorhandene Eingabe."
+            )
         else:
             logger.info("Kameramodul gefunden")
 
-        pipeline = PuzzlePipeline(config, show_ui=True, puzzle_dir=puzzle_dir)
+        pipeline = PuzzlePipeline(config, show_ui=False, puzzle_dir=puzzle_dir)
         result = pipeline.run()
-        
+
         if result.success:
             logger.info("✓ Puzzle erfolgreich gelöst!")
             logger.info(f"Zeit: {result.duration:.2f}s")
         else:
             logger.error("✗ Puzzle konnte nicht gelöst werden")
 
-            
     except KeyboardInterrupt:
         logger.info("\nProgramm durch Benutzer abgebrochen")
     except Exception as e:
         logger.exception(f"Fehler: {e}")
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()

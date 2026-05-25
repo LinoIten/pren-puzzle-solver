@@ -238,7 +238,7 @@ class HardwareConfig:
 
     serial_port: str = "/dev/serial0"
     baud_rate: int = 115200
-    enabled: bool = False  # Lokal deaktiviert; True auf dem Roboter
+    enabled: bool = True  # Lokal deaktiviert; True auf dem Roboter
 
 
 @dataclass
