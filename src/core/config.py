@@ -47,7 +47,7 @@ class ResolutionConfig:
     """
 
     native_px_per_mm: float = 2.0  # Aufloesung der Quellbilder
-    solver_px_per_mm: float = 1.0  # Solver-Aufloesung (Render+Score-Schleife)
+    solver_px_per_mm: float = 0.5 # Solver-Aufloesung (Render+Score-Schleife)
     analysis_px_per_mm: float = (
         5.0  # Analyse-Aufloesung (einmalig; hoeher = sauberere Erkennung)
     )
@@ -57,8 +57,8 @@ class ResolutionConfig:
     # Physikalische Abmessungen in mm
     # a4 = Zielbereich (physisches A5-Blatt: 148x210)
     # a5 = Quellbereich (physisches A4-Blatt, Kamera: 297x210 Querformat)
-    a4_width_mm: int = 128  # Ziel (A5-Blatt, Querformat: Breite)
-    a4_height_mm: int = 188  # Ziel (A5-Blatt: Höhe)
+    a4_width_mm: int = 128.5  # Ziel (A5-Blatt, Querformat: Breite)
+    a4_height_mm: int = 190.5 # Ziel (A5-Blatt: Höhe)
     a5_width_mm: int = 297  # Quelle (A4-Blatt, Querformat: Breite)
     a5_height_mm: int = 210  # Quelle (A4-Blatt: Höhe)
 

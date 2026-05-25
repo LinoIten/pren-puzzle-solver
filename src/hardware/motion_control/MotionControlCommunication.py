@@ -54,13 +54,14 @@ def send_to_robot(
 
     for p in pieces:
         piece = cmd.pieces.add()
+        a4_x_mm = 297
         piece.piece_id = int(p.id)
-        piece.pick_x = p.pick_pose.x / pick_px_per_mm
+        piece.pick_x = a4_x_mm - (p.pick_pose.x / pick_px_per_mm)
         piece.pick_y = p.pick_pose.y / pick_px_per_mm
         if p.place_pose:
-            piece.place_x = p.place_pose.x  # already in mm
-            piece.place_y = p.place_pose.y  # already in mm
-            rotation = p.place_pose.theta % 360
+            piece.place_x = p.place_pose.y  # already in mm
+            piece.place_y = p.place_pose.x  # already in mm
+            rotation = (90 - p.place_pose.theta) % 360
             if rotation > 180:
                 rotation -= 360
             piece.rotation = rotation

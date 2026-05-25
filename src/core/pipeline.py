@@ -114,15 +114,20 @@ class PuzzlePipeline:
 
             # Pahse 0.5: Bildaufnahme
             self.logger.info("Phase 0.5: Bildaufnahme")
+            _camera_start = time()
             CameraProcess()
-            self.logger.info("Kameramodul abgeschossen")
+            _time_camera = time() - _camera_start
+            self.logger.info(f"Kameramodul abgeschossen {_time_camera:.1f}s")
 
 
             # Phase 1: Vision
             self.logger.info("Phase 1: Bildverarbeitung")
+            _vision_start = time()
             pieces, piece_shapes, piece_shapes_fine, corner_info, puzzle_pieces = (
                 self._process_vision()
             )
+            _time_vision= time() - _vision_start
+            self.logger.info(f"Vision abgeschossen {_time_vision:.1f}s")
 
             # Phase 2: Solving
             self.logger.info("Phase 2: Puzzle loesen")
@@ -768,6 +773,8 @@ class PuzzlePipeline:
         if not puzzle_pieces:
             return
         px_per_mm = self.resolution.solver_px_per_mm
+        a5_w_mm = self.resolution.a5_width_mm
+
         print("\n" + "=" * 60)
         if solve_time is not None:
             print(f"HARDWARE PAYLOAD  (solved in {solve_time:.1f}s)")
@@ -776,13 +783,14 @@ class PuzzlePipeline:
         print("=" * 60)
         print(f"{'Piece':<8} {'pick_x_mm':>12} {'pick_y_mm':>12} {'place_x_mm':>12} {'place_y_mm':>12} {'rotation_deg':>14}")
         print("-" * 60)
+
         for p in puzzle_pieces:
-            pick_x = p.pick_pose.x / px_per_mm
+            pick_x = a5_w_mm - (p.pick_pose.x / px_per_mm)
             pick_y = p.pick_pose.y / px_per_mm
             if p.place_pose:
-                place_x = p.place_pose.x
-                place_y = p.place_pose.y
-                rotation = p.place_pose.theta % 360
+                place_x = p.place_pose.y
+                place_y = p.place_pose.x
+                rotation = (90 - p.place_pose.theta) % 360
                 if rotation > 180:
                     rotation -= 360
             else:
