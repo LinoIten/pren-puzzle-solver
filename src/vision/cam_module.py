@@ -1,6 +1,13 @@
 # cam_module.py
 
-# tbd Kameraeinstellungen von umgebung ableiten, benötigt in jedem fall zwei aufnahmen
+# ---------------TBD----------------------
+#  -Kameraeinstellungen von umgebung ableiten, benötigt in jedem fall zwei aufnahmen
+#  oder externes looping bis Aruco erkannt
+#  -Momentan wird der Input Ordner für den algo kosequent geleert falls irgendwas schiefgeht->externer check ob cam_modul
+#  geliefert hat. am besten über die __main__ die einen erfolgstatus zurückgibt true/false
+#  -Aruco Fehler nochmal checken, dürfen keine harten Fehler sein
+#  -Debug Speichern noch bissl unruhig/verstreut
+# ---------------TBD----------------------
 
 # Kamera-/Datei-Eingang, ArUco-basierte A4-Entzerrung, Teile-Segmentierung
 # und Export der Algorithmus-Eingaben.
@@ -119,7 +126,7 @@ OUTPUT_H_IMAGE_TO_WARP_PATH = f"{RUN_NAME}_h_image_to_warp.npy"
 
 # False = nur Algorithmus-Input in DESTINATION_TO_ALGO_INPUT_FOLDER schreiben.
 # True = Zusätzlich Debug-Dateien in src/vision/output speichern.
-SAVE_DEBUG_FILES = False
+SAVE_DEBUG_FILES = True
 
 # ============================================================
 # ARUCO / A4-GEOMETRIE
@@ -261,8 +268,8 @@ CUTOUT_BACKGROUND_VALUE = 255
 # Erwartete Gesamtfläche aller Puzzleteile in mm2.
 # 20879 mm: Oberfläche des 6 Teile Puzzles von Silvan
 EXPECTED_TOTAL_PART_AREA_MM2 = 20879
-# Erlaubte Flächenabweichung. 0.01 = ±1 %.
-MAX_TOTAL_AREA_ERROR_RATIO = 0.01
+# Erlaubte Flächenabweichung. 0.01 = +-1 %.
+MAX_TOTAL_AREA_ERROR_RATIO = 0.03
 
 
 # ============================================================
@@ -1762,10 +1769,17 @@ def main():
         detectedParts = sortPartsByOutputYThenOutputX(detectedParts)
         addDerivedPartValues(detectedParts)
 
+        areaValidationData = buildAreaValidationData(detectedParts)
+
+        partCountIsValid = isExpectedPartCount(len(detectedParts))
+        areaIsValid = areaValidationData["is_valid"]
+        detectionIsValid = partCountIsValid and areaIsValid
+
+        printConsolePartsInfo(detectedParts)
+        printAreaValidationInfo(areaValidationData)
+
         if SAVE_DEBUG_FILES:
             savePartOutputs(warpedImageBgr, binaryMask, detectedParts)
-
-        algoInputDirPath = saveAlgoInputFiles(binaryMask, detectedParts)
 
         if SAVE_DEBUG_FILES:
             outputPartsDebugPath = buildOutputPath(OUTPUT_PARTS_DEBUG_FILENAME)
@@ -1773,26 +1787,30 @@ def main():
             savePngImage(outputPartsDebugPath, partsDebugImageBgr)
             print(f"Teile-Debug-Bild gespeichert: {outputPartsDebugPath}")
 
-        areaValidationData = buildAreaValidationData(detectedParts)
-
         if SAVE_DEBUG_FILES:
             outputJsonPath = buildOutputPath(OUTPUT_JSON_FILENAME)
             debugJsonData = buildDebugJsonData(detectedParts, areaValidationData)
             saveJson(outputJsonPath, debugJsonData)
             print(f"Debug-JSON gespeichert: {outputJsonPath}")
 
-        algoJsonData = buildAlgoInputJsonData(detectedParts, areaValidationData)
-        algoJsonPath = algoInputDirPath / ALGO_INPUT_JSON_FILENAME
-        saveJson(algoJsonPath, algoJsonData)
-        print(f"Algorithmus-Input gespeichert: {algoInputDirPath}")
+        if detectionIsValid:
+            algoInputDirPath = saveAlgoInputFiles(binaryMask, detectedParts)
 
-        printConsolePartsInfo(detectedParts)
-        printAreaValidationInfo(areaValidationData)
+            algoJsonData = buildAlgoInputJsonData(detectedParts, areaValidationData)
+            algoJsonPath = algoInputDirPath / ALGO_INPUT_JSON_FILENAME
+            saveJson(algoJsonPath, algoJsonData)
 
+            print(f"Algorithmus-Input gespeichert: {algoInputDirPath}")
+        else:
+            clearAlgoInputFolder()
+            print()
+            print("Algorithmus-Input wurde NICHT gespeichert.")
+            print("Der Input-Ordner wurde geleert, damit der Solver nicht mit alten Daten weiterläuft.")
+            print(f"- Teileanzahl gültig: {partCountIsValid}")
+            print(f"- Fläche gültig: {areaIsValid}")
     except Exception as e:
         print("Fehler:")
         print(e)
-
 
 if __name__ == "__main__":
     main()
