@@ -92,6 +92,7 @@ class PuzzlePipeline:
         start_time = time()
 
         try:
+            #insert cam_init here
             if self.config.hardware.enabled:
                 from src.hardware.motion_control.MotionControlCommunication import (
                     wait_for_robot_start,
@@ -113,7 +114,7 @@ class PuzzlePipeline:
                         message="Start durch Hardware-Button fehlgeschlagen",
                     )
 
-            # Pahse 0.5: Bildaufnahme
+            # Phase 0.5: Bildaufnahme
             self.logger.info("Phase 0.5: Bildaufnahme")
             _camera_start = time()
             CameraProcess()
