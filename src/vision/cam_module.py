@@ -762,7 +762,19 @@ def warpPxToOutputPxTopRight(xPx, yPx):
 
 
 def outputPxToOutputMm(xPx, yPx):
-    return float(xPx) / WORKING_INTERNAL_PX_PER_MM, float(yPx) / WORKING_INTERNAL_PX_PER_MM
+    # Rechnet eine kontinuierliche Pixelkoordinate aus dem entzerrten A4-Bild
+    # in echte A4-Millimeter um.
+    # xPx/yPx sind keine diskreten Pixelnummern, sondern geometrische Koordinaten,
+    # Zbsp ein Schwerpunkt aus cv2.moments() liefert kontinuierliche! Bildkoordinaten
+    # Das Warp-Bild bildet die A4-Fläche von Pixelkoordinate 0 bis width-1
+    # bzw. height-1 ab. Diese Spanne entspricht exakt 0..A4_WIDTH_MM und
+    # 0..A4_HEIGHT_MM, also von einem Rand bis UND mit zum anderen Rand
+    warpWidthPx, warpHeightPx = getWarpSizePx()
+
+    xMm = float(xPx) * A4_WIDTH_MM / float(warpWidthPx - 1)
+    yMm = float(yPx) * A4_HEIGHT_MM / float(warpHeightPx - 1)
+
+    return xMm, yMm
 
 
 def buildCoordinateOriginDescription():
@@ -1769,7 +1781,6 @@ def main():
     except Exception as e:
         print("Fehler:")
         print(e)
-
 
 if __name__ == "__main__":
     main()
