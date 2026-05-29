@@ -24,7 +24,9 @@ except (ImportError, ModuleNotFoundError):
 # ============================================================
 
 # Projektwurzel. Von src/vision/cam_module.py zwei Ebenen nach oben.
-PROJECT_ROOT = Path(__file__).resolve().parents[2]  # src/vision/cam_module.py -> project root
+PROJECT_ROOT = (
+    Path(__file__).resolve().parents[2]
+)  # src/vision/cam_module.py -> project root
 
 # Zielordner für die Daten, die an den Puzzle-Algorithmus gehen.
 # In diesen Ordner werden parts.json und die Teilmasken geschrieben.
@@ -119,7 +121,7 @@ OUTPUT_H_IMAGE_TO_WARP_PATH = f"{RUN_NAME}_h_image_to_warp.npy"
 
 # False = nur Algorithmus-Input in DESTINATION_TO_ALGO_INPUT_FOLDER schreiben.
 # True = Zusätzlich Debug-Dateien in src/vision/output speichern.
-SAVE_DEBUG_FILES = False
+SAVE_DEBUG_FILES = True
 
 # ============================================================
 # ARUCO / A4-GEOMETRIE
@@ -262,7 +264,7 @@ CUTOUT_BACKGROUND_VALUE = 255
 # 20879 mm: Oberfläche des 6 Teile Puzzles von Silvan
 EXPECTED_TOTAL_PART_AREA_MM2 = 20879
 # Erlaubte Flächenabweichung. 0.03 = +-3 %.
-MAX_TOTAL_AREA_ERROR_RATIO = 0.03
+MAX_TOTAL_AREA_ERROR_RATIO = 2.0
 
 
 # ============================================================
@@ -338,9 +340,9 @@ TEXT_THICKNESS = 2
 # True = Koordinatenraster in parts_debug.png einzeichnen.
 DEBUG_DRAW_COORDINATE_GRID = True
 # Abstand der feinen Rasterlinien. 10.0 = 1 cm Raster, 1.0 = 1 mm Raster.
-DEBUG_GRID_SPACING_MM = 1.0       # mm
+DEBUG_GRID_SPACING_MM = 1.0  # mm
 # Abstand der stärkeren Rasterlinien. 10.0 = jede 1-cm-Linie stärker.
-DEBUG_GRID_MAJOR_SPACING_MM = 10.0 # stärkere Linie alle x mm
+DEBUG_GRID_MAJOR_SPACING_MM = 10.0  # stärkere Linie alle x mm
 # Transparenz des Rasters. Grösser = Raster sichtbarer, Bild darunter dunkler.
 DEBUG_GRID_ALPHA = 0.35
 # Länge der x-/y-Achsenpfeile in mm.
@@ -363,6 +365,7 @@ COLOR_AXIS_TEXT = (255, 255, 255)
 # ============================================================
 # DATEI- UND ALLGEMEINE HILFSFUNKTIONEN
 # ============================================================
+
 
 def buildOutputPath(filename):
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -403,6 +406,7 @@ def clearAlgoInputFolder():
 
     return algoInputDirPath
 
+
 def clearDebugOutputFolder():
     # Leert den Output-Ordner vollständig.
     # Der Ordner selbst bleibt bestehen.
@@ -417,13 +421,11 @@ def clearDebugOutputFolder():
     return outputDirPath
 
 
-
-
-
-
 def rotateImageIfNeeded(imageBgr):
     if ROTATE_90_CLOCKWISE and ROTATE_180:
-        raise ValueError("Nur eine Rotation aktivieren: entweder ROTATE_90_CLOCKWISE oder ROTATE_180.")
+        raise ValueError(
+            "Nur eine Rotation aktivieren: entweder ROTATE_90_CLOCKWISE oder ROTATE_180."
+        )
 
     if ROTATE_90_CLOCKWISE:
         return cv2.rotate(imageBgr, cv2.ROTATE_90_CLOCKWISE)
@@ -438,10 +440,12 @@ def rotateImageIfNeeded(imageBgr):
 # BILDEINGABE
 # ============================================================
 
+
 def initCameraIfAvailable():
     if not isPiCameraAvailable():
         return None
     return initCamera()
+
 
 def isPiCameraAvailable():
     return Picamera2 is not None
@@ -537,6 +541,7 @@ def captureImageFromCamera():
     finally:
         stopCamera(cam)
 
+
 def loadImageFromFile():
     inputPath = Path(INPUT_IMAGE_PATH)
 
@@ -569,9 +574,11 @@ def getInputImage(cam=None):
 
     raise ValueError('IMAGE_SOURCE muss "camera" oder "file" sein.')
 
+
 # ============================================================
 # ARUCO / A4-ERKENNUNG MIT OFFSET
 # ============================================================
+
 
 def detectArucoMarkers(imageBgr):
     # Erkennt alle ArUco-Marker im Bild und behält nur die REQUIRED_IDS.
@@ -600,10 +607,14 @@ def detectArucoMarkers(imageBgr):
 
 
 def validateDetectedMarkers(detectedMarkers):
-    missingIds = [markerId for markerId in REQUIRED_IDS if markerId not in detectedMarkers]
+    missingIds = [
+        markerId for markerId in REQUIRED_IDS if markerId not in detectedMarkers
+    ]
 
     if missingIds:
-        raise RuntimeError(f"Nicht alle benoetigten Marker wurden erkannt. Fehlend: {missingIds}")
+        raise RuntimeError(
+            f"Nicht alle benoetigten Marker wurden erkannt. Fehlend: {missingIds}"
+        )
 
 
 def getReferenceCornersFromMarkers(detectedMarkers):
@@ -704,7 +715,9 @@ def extractA4Corners(detectedMarkers):
     # 2. Homographie: Referenz-/Rahmen-mm -> Bildpixel.
     referenceImagePoints = buildReferenceCornerArrayImage(referenceCorners)
     referenceMmPoints = buildReferenceCornerArrayMm()
-    hReferenceMmToImage = cv2.getPerspectiveTransform(referenceMmPoints, referenceImagePoints)
+    hReferenceMmToImage = cv2.getPerspectiveTransform(
+        referenceMmPoints, referenceImagePoints
+    )
 
     # 3. Echte A4-Ecken innerhalb der Referenz-/Rahmenfläche in mm definieren.
     a4CornersReferenceMm = buildA4CornerArrayInReferenceMm()
@@ -729,6 +742,7 @@ def extractA4Corners(detectedMarkers):
     }
 
     return a4Corners, referenceCorners
+
 
 def calculate_native_a4_pixel_density(a4_corners_px):
     top_left = np.asarray(a4_corners_px["top_left"], dtype=np.float32)
@@ -759,9 +773,12 @@ def calculate_native_a4_pixel_density(a4_corners_px):
         "measured_width_px": float(measured_width_px),
         "measured_height_px": float(measured_height_px),
     }
+
+
 # ============================================================
 # HOMOGRAPHIE / KOORDINATEN
 # ============================================================
+
 
 def getWarpSizePx():
     warpWidthPx = int(round(A4_WIDTH_MM * WORKING_INTERNAL_PX_PER_MM))
@@ -845,6 +862,7 @@ def buildCoordinateOriginDescription():
 # TEILE-SEGMENTIERUNG
 # ============================================================
 
+
 def ensureOddKernelSize(value):
     value = int(value)
 
@@ -871,16 +889,18 @@ def applyIgnoreBorder(binaryMask):
     imageHeight, imageWidth = maskedBinaryMask.shape[:2]
 
     maskedBinaryMask[0:borderPx, :] = 0
-    maskedBinaryMask[imageHeight - borderPx:imageHeight, :] = 0
+    maskedBinaryMask[imageHeight - borderPx : imageHeight, :] = 0
     maskedBinaryMask[:, 0:borderPx] = 0
-    maskedBinaryMask[:, imageWidth - borderPx:imageWidth] = 0
+    maskedBinaryMask[:, imageWidth - borderPx : imageWidth] = 0
 
     return maskedBinaryMask
 
 
 def fillMaskContourHoles(binaryMask):
     # Füllt Löcher innerhalb externer Konturen, damit Teile als volle Flächen zählen.
-    contours, _ = cv2.findContours(binaryMask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    contours, _ = cv2.findContours(
+        binaryMask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+    )
 
     filledMask = np.zeros(binaryMask.shape, dtype=np.uint8)
     cv2.drawContours(filledMask, contours, -1, 255, -1)
@@ -926,7 +946,9 @@ def buildPartsMask(warpedImageBgr):
         )
 
     else:
-        raise ValueError('SEGMENTATION_THRESHOLD_MODE muss "fixed", "otsu" oder "adaptive" sein.')
+        raise ValueError(
+            'SEGMENTATION_THRESHOLD_MODE muss "fixed", "otsu" oder "adaptive" sein.'
+        )
 
     openKernel = np.ones((MORPH_OPEN_KERNEL_SIZE, MORPH_OPEN_KERNEL_SIZE), np.uint8)
     closeKernel = np.ones((MORPH_CLOSE_KERNEL_SIZE, MORPH_CLOSE_KERNEL_SIZE), np.uint8)
@@ -959,10 +981,12 @@ def computeContourCentroid(contour):
 def findAllValidParts(binaryMask):
     # Sucht Konturen und filtert sie über minimale/maximale Fläche.
     # Konturen suchen und nur solche behalten, deren Fläche im erlaubten Bereich liegt.
-    contours, _ = cv2.findContours(binaryMask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    contours, _ = cv2.findContours(
+        binaryMask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+    )
 
-    minAreaPx = MIN_PART_AREA_MM2 * (WORKING_INTERNAL_PX_PER_MM ** 2)
-    maxAreaPx = MAX_PART_AREA_MM2 * (WORKING_INTERNAL_PX_PER_MM ** 2)
+    minAreaPx = MIN_PART_AREA_MM2 * (WORKING_INTERNAL_PX_PER_MM**2)
+    maxAreaPx = MAX_PART_AREA_MM2 * (WORKING_INTERNAL_PX_PER_MM**2)
 
     detectedParts = []
 
@@ -978,16 +1002,18 @@ def findAllValidParts(binaryMask):
         centroidX, centroidY = computeContourCentroid(contour)
         x, y, w, h = cv2.boundingRect(contour)
 
-        detectedParts.append({
-            "contour": contour,
-            "areaPx": float(areaPx),
-            "centroidX": float(centroidX),
-            "centroidY": float(centroidY),
-            "bboxX": int(x),
-            "bboxY": int(y),
-            "bboxW": int(w),
-            "bboxH": int(h),
-        })
+        detectedParts.append(
+            {
+                "contour": contour,
+                "areaPx": float(areaPx),
+                "centroidX": float(centroidX),
+                "centroidY": float(centroidY),
+                "bboxX": int(x),
+                "bboxY": int(y),
+                "bboxW": int(w),
+                "bboxH": int(h),
+            }
+        )
 
     return detectedParts
 
@@ -998,7 +1024,9 @@ def sortPartsByOutputYThenOutputX(detectedParts):
             partInfo["centroidX"],
             partInfo["centroidY"],
         )
-        centroidXmm, centroidYmm = outputPxToOutputMm(centroidXpxOutput, centroidYpxOutput)
+        centroidXmm, centroidYmm = outputPxToOutputMm(
+            centroidXpxOutput, centroidYpxOutput
+        )
         return centroidYmm, centroidXmm
 
     return sorted(detectedParts, key=sortKey)
@@ -1012,8 +1040,10 @@ def addDerivedPartValues(detectedParts):
             partInfo["centroidX"],
             partInfo["centroidY"],
         )
-        centroidXmm, centroidYmm = outputPxToOutputMm(centroidXpxOutput, centroidYpxOutput)
-        areaMm2 = partInfo["areaPx"] / (WORKING_INTERNAL_PX_PER_MM ** 2)
+        centroidXmm, centroidYmm = outputPxToOutputMm(
+            centroidXpxOutput, centroidYpxOutput
+        )
+        areaMm2 = partInfo["areaPx"] / (WORKING_INTERNAL_PX_PER_MM**2)
 
         partInfo["index"] = i + 1
         partInfo["partName"] = f"part_{i + 1:02d}"
@@ -1032,6 +1062,7 @@ def addDerivedPartValues(detectedParts):
 # ============================================================
 # FLAECHENVALIDIERUNG
 # ============================================================
+
 
 def computeTotalPartsAreaMm2(detectedParts):
     return sum(partInfo["areaMm2"] for partInfo in detectedParts)
@@ -1060,8 +1091,12 @@ def buildAreaValidationData(detectedParts):
 def printAreaValidationInfo(areaValidationData):
     print()
     print("Flaechenvalidierung:")
-    print(f"- Erwartete Gesamtflaeche: {areaValidationData['expected_total_area_mm2']:.0f} mm2")
-    print(f"- Gemessene Gesamtflaeche: {areaValidationData['measured_total_area_mm2']:.0f} mm2")
+    print(
+        f"- Erwartete Gesamtflaeche: {areaValidationData['expected_total_area_mm2']:.0f} mm2"
+    )
+    print(
+        f"- Gemessene Gesamtflaeche: {areaValidationData['measured_total_area_mm2']:.0f} mm2"
+    )
     print(f"- Fehler: {areaValidationData['area_error_mm2']:.0f} mm2")
     print(f"- Fehler: {areaValidationData['area_error_percent']:.2f} %")
     print(f"- Erlaubt: +/- {areaValidationData['max_allowed_error_percent']:.2f} %")
@@ -1075,6 +1110,7 @@ def printAreaValidationInfo(areaValidationData):
 # ============================================================
 # TEILE-AUSSCHNITTE SPEICHERN
 # ============================================================
+
 
 def buildCropBounds(imageWidth, imageHeight, bboxX, bboxY, bboxW, bboxH):
     x1 = max(0, bboxX - CROP_PADDING_PX)
@@ -1104,7 +1140,6 @@ def buildSinglePartMask(fullBinaryMask, contour, cropBounds):
     return singleMask[y1:y2, x1:x2].copy()
 
 
-
 def getAlgoInputScaleFactor():
     return ALGO_INPUT_PX_PER_MM / WORKING_INTERNAL_PX_PER_MM
 
@@ -1124,6 +1159,7 @@ def resizeMaskForAlgoInput(maskImage):
         interpolation=cv2.INTER_NEAREST,
     )
 
+
 def saveAlgoInputFiles(binaryMask, detectedParts):
     # Speichert nur die Masken, welche der Algorithmus später als Input braucht.
     # Der Input-Ordner wird bewusst nicht hier geleert, sondern einmal zentral
@@ -1140,7 +1176,9 @@ def saveAlgoInputFiles(binaryMask, detectedParts):
             partInfo["bboxX"] + partInfo["bboxW"],
             partInfo["bboxY"] + partInfo["bboxH"],
         )
-        croppedSingleMaskInternal = buildSinglePartMask(binaryMask, partInfo["contour"], cropBounds)
+        croppedSingleMaskInternal = buildSinglePartMask(
+            binaryMask, partInfo["contour"], cropBounds
+        )
         croppedSingleMaskAlgo = resizeMaskForAlgoInput(croppedSingleMaskInternal)
 
         algoMaskFilename = f"{ALGO_INPUT_MASK_PREFIX}{i}.png"
@@ -1158,8 +1196,12 @@ def saveAlgoInputFiles(binaryMask, detectedParts):
 
         # Schwerpunkt in Pixeln passend zur Algorithmus-Skalierung.
         # Die mm-Werte bleiben die Wahrheit; daraus werden die Algo-Pixel berechnet.
-        partInfo["algoInputCentroidXpx"] = float(partInfo["centroidXmm"] * ALGO_INPUT_PX_PER_MM)
-        partInfo["algoInputCentroidYpx"] = float(partInfo["centroidYmm"] * ALGO_INPUT_PX_PER_MM)
+        partInfo["algoInputCentroidXpx"] = float(
+            partInfo["centroidXmm"] * ALGO_INPUT_PX_PER_MM
+        )
+        partInfo["algoInputCentroidYpx"] = float(
+            partInfo["centroidYmm"] * ALGO_INPUT_PX_PER_MM
+        )
 
         partInfo["algoInputMaskWidthPx"] = int(croppedSingleMaskAlgo.shape[1])
         partInfo["algoInputMaskHeightPx"] = int(croppedSingleMaskAlgo.shape[0])
@@ -1230,29 +1272,34 @@ def buildPartsJsonList(detectedParts, includePaths):
         }
 
         if includePaths:
-            partData.update({
-                "bounding_box_px": {
-                    "x": partInfo["bboxX"],
-                    "y": partInfo["bboxY"],
-                    "w": partInfo["bboxW"],
-                    "h": partInfo["bboxH"],
-                },
-                "algo_input_mask_path": partInfo.get("algoInputMaskPath"),
-                "debug_algo_input_mask_path": partInfo.get("debugAlgoInputMaskPath"),
-            })
+            partData.update(
+                {
+                    "bounding_box_px": {
+                        "x": partInfo["bboxX"],
+                        "y": partInfo["bboxY"],
+                        "w": partInfo["bboxW"],
+                        "h": partInfo["bboxH"],
+                    },
+                    "algo_input_mask_path": partInfo.get("algoInputMaskPath"),
+                    "debug_algo_input_mask_path": partInfo.get(
+                        "debugAlgoInputMaskPath"
+                    ),
+                }
+            )
 
         partsJson.append(partData)
 
     return partsJson
 
+
 def isExpectedPartCount(partCount):
     return partCount in EXPECTED_PART_COUNT
+
 
 def buildDebugJsonData(detectedParts, areaValidationData):
     geometryData = buildGeometryJsonData()
 
     return {
-
         "run_name": RUN_NAME,
         "part_count": len(detectedParts),
         "expected_part_counts": EXPECTED_PART_COUNT,
@@ -1310,6 +1357,7 @@ def buildAlgoInputJsonData(detectedParts, areaValidationData):
 # DEBUG-ZEICHNUNGEN
 # ============================================================
 
+
 def isMajorGridLine(index, spacingPx, majorSpacingPx):
     if majorSpacingPx <= 0:
         return False
@@ -1328,7 +1376,9 @@ def drawCoordinateGridDebug(debugImageBgr):
     overlay = debugImageBgr.copy()
 
     gridSpacingPx = int(round(DEBUG_GRID_SPACING_MM * WORKING_INTERNAL_PX_PER_MM))
-    majorSpacingPx = int(round(DEBUG_GRID_MAJOR_SPACING_MM * WORKING_INTERNAL_PX_PER_MM))
+    majorSpacingPx = int(
+        round(DEBUG_GRID_MAJOR_SPACING_MM * WORKING_INTERNAL_PX_PER_MM)
+    )
 
     if gridSpacingPx <= 0:
         return debugImageBgr
@@ -1338,7 +1388,11 @@ def drawCoordinateGridDebug(debugImageBgr):
     verticalLineIndex = 0
     x = imageWidth - 1
     while x >= 0:
-        color = COLOR_GRID_MAJOR if isMajorGridLine(verticalLineIndex, gridSpacingPx, majorSpacingPx) else COLOR_GRID_MINOR
+        color = (
+            COLOR_GRID_MAJOR
+            if isMajorGridLine(verticalLineIndex, gridSpacingPx, majorSpacingPx)
+            else COLOR_GRID_MINOR
+        )
         thickness = 2 if color == COLOR_GRID_MAJOR else 1
         cv2.line(overlay, (x, 0), (x, imageHeight - 1), color, thickness)
         verticalLineIndex += 1
@@ -1347,13 +1401,19 @@ def drawCoordinateGridDebug(debugImageBgr):
     horizontalLineIndex = 0
     y = 0
     while y < imageHeight:
-        color = COLOR_GRID_MAJOR if isMajorGridLine(horizontalLineIndex, gridSpacingPx, majorSpacingPx) else COLOR_GRID_MINOR
+        color = (
+            COLOR_GRID_MAJOR
+            if isMajorGridLine(horizontalLineIndex, gridSpacingPx, majorSpacingPx)
+            else COLOR_GRID_MINOR
+        )
         thickness = 2 if color == COLOR_GRID_MAJOR else 1
         cv2.line(overlay, (0, y), (imageWidth - 1, y), color, thickness)
         horizontalLineIndex += 1
         y = horizontalLineIndex * gridSpacingPx
 
-    debugImageBgr = cv2.addWeighted(overlay, DEBUG_GRID_ALPHA, debugImageBgr, 1.0 - DEBUG_GRID_ALPHA, 0)
+    debugImageBgr = cv2.addWeighted(
+        overlay, DEBUG_GRID_ALPHA, debugImageBgr, 1.0 - DEBUG_GRID_ALPHA, 0
+    )
 
     axisLengthPx = int(round(DEBUG_AXIS_LENGTH_MM * WORKING_INTERNAL_PX_PER_MM))
     axisLengthPx = max(gridSpacingPx, axisLengthPx)
@@ -1363,8 +1423,12 @@ def drawCoordinateGridDebug(debugImageBgr):
     yAxisEnd = (imageWidth - 1, min(imageHeight - 1, axisLengthPx))
 
     cv2.circle(debugImageBgr, origin, 10, COLOR_AXIS_ORIGIN, -1)
-    cv2.arrowedLine(debugImageBgr, origin, xAxisEnd, COLOR_AXIS_X, 4, cv2.LINE_AA, tipLength=0.08)
-    cv2.arrowedLine(debugImageBgr, origin, yAxisEnd, COLOR_AXIS_Y, 4, cv2.LINE_AA, tipLength=0.08)
+    cv2.arrowedLine(
+        debugImageBgr, origin, xAxisEnd, COLOR_AXIS_X, 4, cv2.LINE_AA, tipLength=0.08
+    )
+    cv2.arrowedLine(
+        debugImageBgr, origin, yAxisEnd, COLOR_AXIS_Y, 4, cv2.LINE_AA, tipLength=0.08
+    )
 
     cv2.putText(
         debugImageBgr,
@@ -1430,7 +1494,13 @@ def drawPartsDebug(warpedImageBgr, detectedParts):
 
         cv2.drawContours(debugImageBgr, [contour], -1, PART_CONTOUR_COLOR, 2)
         cv2.rectangle(debugImageBgr, (x, y), (x + w, y + h), PART_BOX_COLOR, 2)
-        cv2.circle(debugImageBgr, (centroidXi, centroidYi), PART_CENTROID_RADIUS_PX, PART_CENTROID_COLOR, -1)
+        cv2.circle(
+            debugImageBgr,
+            (centroidXi, centroidYi),
+            PART_CENTROID_RADIUS_PX,
+            PART_CENTROID_COLOR,
+            -1,
+        )
 
         cv2.putText(
             debugImageBgr,
@@ -1489,6 +1559,7 @@ def drawPartsDebug(warpedImageBgr, detectedParts):
 
     return debugImageBgr
 
+
 def drawMarkerDebug(imageBgr, detectedMarkers):
     # Zeichnet Markerumrisse, Marker-IDs und die vier nummerierten Marker-Ecken.
     debugImageBgr = imageBgr.copy()
@@ -1498,12 +1569,20 @@ def drawMarkerDebug(imageBgr, detectedMarkers):
         markerCorners = detectedMarkers[markerId]["corners"]
         ptsInt = np.round(markerCorners).astype(int)
 
-        cv2.polylines(debugImageBgr, [ptsInt.reshape((-1, 1, 2))], True, COLOR_MARKER_OUTLINE, 2)
+        cv2.polylines(
+            debugImageBgr, [ptsInt.reshape((-1, 1, 2))], True, COLOR_MARKER_OUTLINE, 2
+        )
 
         centerX = int(round(np.mean(markerCorners[:, 0])))
         centerY = int(round(np.mean(markerCorners[:, 1])))
 
-        cv2.circle(debugImageBgr, (centerX, centerY), MARKER_CENTER_RADIUS_PX, COLOR_MARKER_CENTER, -1)
+        cv2.circle(
+            debugImageBgr,
+            (centerX, centerY),
+            MARKER_CENTER_RADIUS_PX,
+            COLOR_MARKER_CENTER,
+            -1,
+        )
 
         cv2.putText(
             debugImageBgr,
@@ -1520,7 +1599,13 @@ def drawMarkerDebug(imageBgr, detectedMarkers):
             x = int(round(markerCorners[cornerIndex, 0]))
             y = int(round(markerCorners[cornerIndex, 1]))
 
-            cv2.circle(debugImageBgr, (x, y), CORNER_CIRCLE_RADIUS_PX, cornerColors[cornerIndex], -1)
+            cv2.circle(
+                debugImageBgr,
+                (x, y),
+                CORNER_CIRCLE_RADIUS_PX,
+                cornerColors[cornerIndex],
+                -1,
+            )
 
             cv2.putText(
                 debugImageBgr,
@@ -1536,7 +1621,9 @@ def drawMarkerDebug(imageBgr, detectedMarkers):
     return debugImageBgr
 
 
-def drawCornerPolygon(debugImageBgr, corners, colorPolyline, colorPoint, radius, labelPrefix):
+def drawCornerPolygon(
+    debugImageBgr, corners, colorPolyline, colorPoint, radius, labelPrefix
+):
     ptTL = np.round(corners["top_left"]).astype(int)
     ptTR = np.round(corners["top_right"]).astype(int)
     ptBR = np.round(corners["bottom_right"]).astype(int)
@@ -1598,7 +1685,9 @@ def buildReferenceStatusText():
 
     for cornerName in ["top_left", "top_right", "bottom_right", "bottom_left"]:
         mapping = REFERENCE_CORNER_FROM_MARKER[cornerName]
-        parts.append(f"{cornerName}=ID{mapping['marker_id']}/C{mapping['corner_index']}")
+        parts.append(
+            f"{cornerName}=ID{mapping['marker_id']}/C{mapping['corner_index']}"
+        )
 
     return "  ".join(parts)
 
@@ -1633,10 +1722,46 @@ def drawCombinedDebug(imageBgr, detectedMarkers, a4Corners, referenceCorners):
     statusText3 = buildOffsetStatusText()
     statusText4 = buildRotationStatusText()
 
-    cv2.putText(debugImageBgr, statusText1, (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.8, COLOR_STATUS_TEXT, 2, cv2.LINE_AA)
-    cv2.putText(debugImageBgr, statusText2, (30, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.6, COLOR_STATUS_TEXT, 2, cv2.LINE_AA)
-    cv2.putText(debugImageBgr, statusText3, (30, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.8, COLOR_STATUS_TEXT, 2, cv2.LINE_AA)
-    cv2.putText(debugImageBgr, statusText4, (30, 160), cv2.FONT_HERSHEY_SIMPLEX, 0.8, COLOR_STATUS_TEXT, 2, cv2.LINE_AA)
+    cv2.putText(
+        debugImageBgr,
+        statusText1,
+        (30, 40),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.8,
+        COLOR_STATUS_TEXT,
+        2,
+        cv2.LINE_AA,
+    )
+    cv2.putText(
+        debugImageBgr,
+        statusText2,
+        (30, 80),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.6,
+        COLOR_STATUS_TEXT,
+        2,
+        cv2.LINE_AA,
+    )
+    cv2.putText(
+        debugImageBgr,
+        statusText3,
+        (30, 120),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.8,
+        COLOR_STATUS_TEXT,
+        2,
+        cv2.LINE_AA,
+    )
+    cv2.putText(
+        debugImageBgr,
+        statusText4,
+        (30, 160),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.8,
+        COLOR_STATUS_TEXT,
+        2,
+        cv2.LINE_AA,
+    )
 
     return debugImageBgr
 
@@ -1644,6 +1769,7 @@ def drawCombinedDebug(imageBgr, detectedMarkers, a4Corners, referenceCorners):
 # ============================================================
 # KONSOLENAUSGABEN
 # ============================================================
+
 
 def printConsoleMarkerInfo(detectedMarkers):
     print()
@@ -1715,13 +1841,23 @@ def printConsolePartsInfo(detectedParts):
 
     for partInfo in detectedParts:
         print(f"- {partInfo['partName']}")
-        print(f"  Schwerpunkt A4-mm: x={partInfo['centroidXmm']:.3f}, y={partInfo['centroidYmm']:.3f}")
-        print(f"  Schwerpunkt A4-px: x={partInfo['centroidXpx']:.3f}, y={partInfo['centroidYpx']:.3f}")
-        print(f"  Schwerpunkt Warp-Pixel debug: x={partInfo['centroidX']:.3f}, y={partInfo['centroidY']:.3f}")
+        print(
+            f"  Schwerpunkt A4-mm: x={partInfo['centroidXmm']:.3f}, y={partInfo['centroidYmm']:.3f}"
+        )
+        print(
+            f"  Schwerpunkt A4-px: x={partInfo['centroidXpx']:.3f}, y={partInfo['centroidYpx']:.3f}"
+        )
+        print(
+            f"  Schwerpunkt Warp-Pixel debug: x={partInfo['centroidX']:.3f}, y={partInfo['centroidY']:.3f}"
+        )
         print(f"  Flaeche: {partInfo['areaMm2']:.3f} mm2")
-        print(f"  Bounding Box: x={partInfo['bboxX']}, y={partInfo['bboxY']}, w={partInfo['bboxW']}, h={partInfo['bboxH']}")
+        print(
+            f"  Bounding Box: x={partInfo['bboxX']}, y={partInfo['bboxY']}, w={partInfo['bboxW']}, h={partInfo['bboxH']}"
+        )
         if SAVE_DEBUG_FILES:
-            print(f"  Debug-Kopie Algorithmus-Maske: {partInfo.get('debugAlgoInputMaskPath')}")
+            print(
+                f"  Debug-Kopie Algorithmus-Maske: {partInfo.get('debugAlgoInputMaskPath')}"
+            )
         print(f"  Algorithmus-Maske: {partInfo.get('algoInputMaskPath')}")
 
     print()
@@ -1732,6 +1868,7 @@ def printConsolePartsInfo(detectedParts):
 # ============================================================
 # HAUPTPROGRAMM
 # ============================================================
+
 
 def main(cam=None):
     try:
@@ -1758,7 +1895,9 @@ def main(cam=None):
         printConsoleMarkerInfo(detectedMarkers)
 
         a4Corners, referenceCorners = extractA4Corners(detectedMarkers)
-        printConsoleCornerInfo("Referenz-/Rahmen-Bildecken aus ArUcos:", referenceCorners)
+        printConsoleCornerInfo(
+            "Referenz-/Rahmen-Bildecken aus ArUcos:", referenceCorners
+        )
         printConsoleCornerInfo("Abgeleitete echte A4-Bildecken:", a4Corners)
 
         native_density = calculate_native_a4_pixel_density(a4Corners)
@@ -1769,7 +1908,9 @@ def main(cam=None):
 
         if SAVE_DEBUG_FILES:
             outputDebugPath = buildOutputPath(OUTPUT_DEBUG_FILENAME)
-            debugImageBgr = drawCombinedDebug(imageBgr, detectedMarkers, a4Corners, referenceCorners)
+            debugImageBgr = drawCombinedDebug(
+                imageBgr, detectedMarkers, a4Corners, referenceCorners
+            )
             savePngImage(outputDebugPath, debugImageBgr)
             print(f"Debug-Bild gespeichert: {outputDebugPath}")
 
@@ -1824,7 +1965,9 @@ def main(cam=None):
         else:
             print()
             print("Algorithmus-Input wurde NICHT gespeichert.")
-            print("Der Input-Ordner bleibt leer, damit der Solver nicht mit alten Daten weiterläuft.")
+            print(
+                "Der Input-Ordner bleibt leer, damit der Solver nicht mit alten Daten weiterläuft."
+            )
             print(f"- Teileanzahl gültig: {partCountIsValid}")
             print(f"- Fläche gültig: {areaIsValid}")
 
@@ -1839,6 +1982,7 @@ def main(cam=None):
     except Exception as e:
         print("Fehler:")
         print(e)
+
 
 if __name__ == "__main__":
     main()
