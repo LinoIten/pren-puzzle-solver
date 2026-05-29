@@ -5,6 +5,9 @@ Shared geometry utilities for shape rotation and cropping.
 import cv2
 import numpy as np
 
+_rotate_cache: dict = {}
+ROTATE_CACHE_ENABLED: bool = True
+
 
 def rotate_and_crop(shape: np.ndarray, angle: float, crop: bool = True) -> np.ndarray:
     """
@@ -20,6 +23,12 @@ def rotate_and_crop(shape: np.ndarray, angle: float, crop: bool = True) -> np.nd
     """
     if angle == 0:
         return shape
+
+    key = (id(shape), round(angle, 2), crop) if ROTATE_CACHE_ENABLED else None
+    if key is not None:
+        cached = _rotate_cache.get(key)
+        if cached is not None:
+            return cached
 
     h, w = shape.shape[:2]
     center = (w // 2, h // 2)
@@ -38,14 +47,21 @@ def rotate_and_crop(shape: np.ndarray, angle: float, crop: bool = True) -> np.nd
     rotated = cv2.warpAffine(shape, M, (new_w, new_h))
 
     if not crop:
+        if key is not None:
+            _rotate_cache[key] = rotated
         return rotated
 
     # Crop to actual content bounds
     piece_points = np.argwhere(rotated > 0)
     if len(piece_points) == 0:
+        if key is not None:
+            _rotate_cache[key] = rotated
         return rotated
 
     min_y, min_x = piece_points.min(axis=0)
     max_y, max_x = piece_points.max(axis=0)
 
-    return rotated[min_y : max_y + 1, min_x : max_x + 1]
+    result = rotated[min_y : max_y + 1, min_x : max_x + 1]
+    if key is not None:
+        _rotate_cache[key] = result
+    return result
