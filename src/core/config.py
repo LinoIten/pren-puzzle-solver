@@ -144,7 +144,7 @@ class SolverTuning:
     gap_penalty: float = 0.2
     score_max: float = 100_000.0  # Referenz-/Maximalscore (Normalisierung + Erfolg)
     score_accept: float = (
-        93_000.0  # Frühzeitiger Abbruch wenn erreicht (akzeptable Loesung)
+        90_000.0  # Frühzeitiger Abbruch wenn erreicht (akzeptable Loesung)
     )
 
     # --- Corner Detection (corner_detector.py) ---
