@@ -139,12 +139,12 @@ class SolverTuning:
     """Zentrale Tuning-Parameter fuer den Solver - alle an einem Ort."""
 
     # --- Scoring (scorer.py) ---
-    overlap_penalty: float = 2.0
-    coverage_reward: float = 1.0
+    overlap_penalty: float = 3.0
+    coverage_reward: float = 2.0
     gap_penalty: float = 0.2
     score_max: float = 100_000.0  # Referenz-/Maximalscore (Normalisierung + Erfolg)
     score_accept: float = (
-        81_000.0  # Frühzeitiger Abbruch wenn erreicht (akzeptable Loesung)
+        90_000.0  # Frühzeitiger Abbruch wenn erreicht (akzeptable Loesung)
     )
 
     # --- Corner Detection (corner_detector.py) ---
@@ -155,13 +155,13 @@ class SolverTuning:
     corner_min_quality: float = 0.68
     corner_max_overhang: int = 12  # mm
     corner_min_extent: int = 30  # mm
-    corner_contour_epsilon: float = 0.030  # Anteil des Umfangs
+    corner_contour_epsilon: float = 0.020  # Anteil des Umfangs
 
     # --- Edge Detection (edge_detector.py) ---
-    edge_min_length: int = 25  # mm
-    edge_min_straightness: float = 0.93
-    edge_min_score: float = 0.75
-    edge_contour_epsilon: float = 0.012  # Anteil des Umfangs
+    edge_min_length: int = 15  # mm
+    edge_min_straightness: float = 0.90
+    edge_min_score: float = 0.70
+    edge_contour_epsilon: float = 0.010  # Anteil des Umfangs
 
     # --- Piece Classification (piece_analyzer.py) ---
     classify_corner_threshold: float = 0.85
@@ -183,21 +183,21 @@ class SolverTuning:
 
     # --- Edge Placement (edge_placement.py) ---
     slide_positions: int = (
-        6  # Gitterpositionen pro Achse (Maximum; Frühabbruch möglich)
+        9  # Gitterpositionen pro Achse (Maximum; Frühabbruch möglich)
     )
     slide_patience: int = (
         3  # Aufeinanderfolgende Positionen ohne Verbesserung → Abbruch
     )
     center_piece_margin: int = 25  # mm
     gap_dilation_mm: float = (
-        3.0  # Randverbreiterung (mm) der Teile beim Solver, um Luecken zu kompensieren
+        4.0  # Randverbreiterung (mm) der Teile beim Solver, um Luecken zu kompensieren
     )
-    pull_to_center_mm: float = 1.2  # Nach dem Solver: Teile um diesen Betrag zur Mitte ziehen (schliesst Luecken)
+    pull_to_center_mm: float = 0  # Nach dem Solver: Teile um diesen Betrag zur Mitte ziehen (schliesst Luecken)
 
     # --- Wall-Align Finetune (wall_align_finetuner.py) ---
     skip_wall_align: bool = False  # Wandausrichtung nach dem Solver überspringen
     wall_align_slide_positions: int = (
-        100  # Rasterpositionen beim Entlanggleiten an der Wand
+        120  # Rasterpositionen beim Entlanggleiten an der Wand
     )
 
     # --- Fine-Tuning (fine_tuner.py) ---
