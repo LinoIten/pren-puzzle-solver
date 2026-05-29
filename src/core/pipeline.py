@@ -55,12 +55,13 @@ class PuzzlePipeline:
     """
 
     def __init__(
-        self, config: Config, show_ui: bool = False, puzzle_dir: str | None = None
+        self, config: Config, show_ui: bool = False, puzzle_dir: str | None = None, skip_camera: bool = False
     ):
         self.config = config
         self.logger = setup_logger("pipeline")
         self.show_ui = show_ui
-        self.puzzle_dir = puzzle_dir  # Directory containing a saved puzzle
+        self.puzzle_dir = puzzle_dir
+        self.skip_camera = skip_camera
 
         self.guess_generator = GuessGenerator(rotation_step=90)
         self.renderer = None  # Will be created after we have target
@@ -116,12 +117,14 @@ class PuzzlePipeline:
                     )
 
             # Phase 0.5: Bildaufnahme
-            self.logger.info("Phase 0.5: Bildaufnahme")
-
-            _camera_start = time()
-            runCameraModule(cam)
-            _time_camera = time() - _camera_start
-            self.logger.info(f"Kameramodul abgeschossen {_time_camera:.1f}s")
+            if not self.skip_camera:
+                self.logger.info("Phase 0.5: Bildaufnahme")
+                _camera_start = time()
+                runCameraModule(cam)
+                _time_camera = time() - _camera_start
+                self.logger.info(f"Kameramodul abgeschossen {_time_camera:.1f}s")
+            else:
+                self.logger.info("Phase 0.5: Bildaufnahme übersprungen (--no-camera)")
 
 
             # Phase 1: Vision
