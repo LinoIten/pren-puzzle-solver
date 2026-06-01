@@ -9,6 +9,7 @@ import json
 import shutil
 import time
 from pathlib import Path
+from capturedSidesCorrection import calculate_puzzle_piece_shape_without_sides
 
 import cv2
 import numpy as np
@@ -123,6 +124,10 @@ OUTPUT_H_IMAGE_TO_WARP_PATH = f"{RUN_NAME}_h_image_to_warp.npy"
 # True = Zusätzlich Debug-Dateien in src/vision/output speichern.
 SAVE_DEBUG_FILES = True
 
+# False = Kantenkorrektur wird nicht ausgeführt.
+# True Kantenkorrektur wird durchgeführt aber Stand 1.Juni noch ziemlich wonky
+CALCULATE_AREA_WITHOUT_SIDES = False
+
 # ============================================================
 # ARUCO / A4-GEOMETRIE
 # ============================================================
@@ -137,6 +142,8 @@ REQUIRED_IDS = [0, 1, 2, 3]
 A4_WIDTH_MM = 297.0
 # Höhe der A4-Fläche im Querformat in mm.
 A4_HEIGHT_MM = 210.0
+# Höhe der Kamera über der A4 Fläche
+CAM_HEIGHT = 700
 # Skalierung im entzerrten Bild. Grösser = mehr Pixel pro mm, genauer aber langsamer.
 # Interne Auflösung mit der das Cam Modul arbeitet, so hoch wie möglich bzw sinnvoll
 WORKING_INTERNAL_PX_PER_MM = 6.0
@@ -262,6 +269,7 @@ CUTOUT_BACKGROUND_VALUE = 255
 # PREN-Puzzle ohne Rahmen: 18.9 x 12.6 cm
 # Erwartete Gesamtfläche aller Puzzleteile in mm2.
 # 20879 mm: Oberfläche des 6 Teile Puzzles von Silvan
+
 EXPECTED_TOTAL_PART_AREA_MM2 = 20879
 # Erlaubte Flächenabweichung. 0.03 = +-3 %.
 MAX_TOTAL_AREA_ERROR_RATIO = 2.0
@@ -578,7 +586,6 @@ def getInputImage(cam=None):
 # ============================================================
 # ARUCO / A4-ERKENNUNG MIT OFFSET
 # ============================================================
-
 
 def detectArucoMarkers(imageBgr):
     # Erkennt alle ArUco-Marker im Bild und behält nur die REQUIRED_IDS.
@@ -1930,7 +1937,8 @@ def main(cam=None):
             print(f"Warp-Bild gespeichert: {outputWarpPath}")
 
         binaryMask = buildPartsMask(warpedImageBgr)
-
+        if CALCULATE_AREA_WITHOUT_SIDES:
+            binaryMask = calculate_puzzle_piece_shape_without_sides(binaryMask, CAM_HEIGHT)
         if SAVE_DEBUG_FILES:
             outputMaskPath = buildOutputPath(OUTPUT_MASK_FILENAME)
             savePngImage(outputMaskPath, binaryMask)
