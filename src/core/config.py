@@ -190,13 +190,13 @@ class SolverTuning:
     )
     center_piece_margin: int = 25  # mm
     gap_dilation_mm: float = (
-        4.0  # Randverbreiterung (mm) der Teile beim Solver, um Luecken zu kompensieren
+        3.0  # Randverbreiterung (mm) der Teile beim Solver, um Luecken zu kompensieren
     )
-    pull_to_center_mm: float = 1  # Nach dem Solver: Teile um diesen Betrag zur Mitte ziehen (schliesst Luecken)
+    pull_to_center_mm: float = 0  # Nach dem Solver: Teile um diesen Betrag zur Mitte ziehen (schliesst Luecken)
 
     # --- Wall-Align Finetune (wall_align_finetuner.py) ---
     skip_wall_align: bool = True  # Wandausrichtung nach dem Solver überspringen
-    skip_edge_slide: bool = False  # Edge-Teile entlang ihrer Wand verschieben
+    skip_edge_slide: bool = True  # Edge-Teile entlang ihrer Wand verschieben
     wall_align_slide_positions: int = (
         120  # Rasterpositionen beim Entlanggleiten an der Wand
     )
@@ -239,7 +239,7 @@ class HardwareConfig:
 
     serial_port: str = "/dev/serial0"
     baud_rate: int = 115200
-    enabled: bool = True  # Lokal deaktiviert; True auf dem Roboter
+    enabled: bool = False  # Lokal deaktiviert; True auf dem Roboter
 
 
 @dataclass
