@@ -1,5 +1,5 @@
 # cam_module.py
-# Repo Test
+# Test if this only goes to copy on sebastiancaluori/Pren2
 # tbd Kameraeinstellungen von umgebung ableiten, benötigt in jedem fall zwei aufnahmen
 
 # Kamera-/Datei-Eingang, ArUco-basierte A4-Entzerrung, Teile-Segmentierung
